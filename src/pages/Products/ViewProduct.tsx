@@ -20,7 +20,6 @@ import {
   ExternalLink,
   ImageOff,
   LoaderCircle,
-  PackageOpen,
   PowerOff,
   RefreshCw,
   Store,

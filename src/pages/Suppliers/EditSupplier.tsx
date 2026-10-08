@@ -39,6 +39,7 @@ import {
   getSupplier,
   getSupplierErrorMessage,
   updateSupplier,
+  updateSupplierStatus,
   updateSupplierVerification,
   type Supplier,
   type SupplierBusinessType,
@@ -584,8 +585,6 @@ export default function EditSupplier() {
             originalForm.country ||
           form.postalCode !==
             originalForm.postalCode ||
-          form.status !==
-            originalForm.status ||
           form.description !==
             originalForm.description ||
           form.logo !==
@@ -601,6 +600,21 @@ export default function EditSupplier() {
       [
         form,
         originalForm,
+      ]
+    );
+
+  /* =======================================================
+     STATUS CHANGES
+  ======================================================= */
+
+  const statusChanged =
+    useMemo(
+      () =>
+        form.status !==
+        originalForm.status,
+      [
+        form.status,
+        originalForm.status,
       ]
     );
 
@@ -625,6 +639,7 @@ export default function EditSupplier() {
 
   const hasChanges =
     profileChanged ||
+    statusChanged ||
     verificationChanged;
 
   /* =======================================================
@@ -924,9 +939,6 @@ export default function EditSupplier() {
           form.sortOrder ||
             0
         ),
-
-      status:
-        form.status,
     });
 
   /* =======================================================
@@ -981,6 +993,52 @@ export default function EditSupplier() {
 
           profileSaved =
             true;
+        }
+
+        /* ---------------------------------------------------
+           STATUS
+
+           Dedicated endpoint owns operational state.
+        --------------------------------------------------- */
+
+        if (statusChanged) {
+          try {
+            latestSupplier =
+              await updateSupplierStatus(
+                supplier.supplierId,
+                form.status
+              );
+
+            profileSaved =
+              true;
+          } catch (error) {
+            if (profileSaved) {
+              setSupplier(
+                latestSupplier
+              );
+
+              setForm(
+                supplierToForm(
+                  latestSupplier
+                )
+              );
+
+              toast.error(
+                "Profile saved, but status update failed",
+                {
+                  description:
+                    getSupplierErrorMessage(
+                      error,
+                      "Unable to update supplier status."
+                    ),
+                }
+              );
+
+              return;
+            }
+
+            throw error;
+          }
         }
 
         /* ---------------------------------------------------

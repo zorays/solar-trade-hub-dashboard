@@ -58,20 +58,32 @@ export type DealProductPricing = {
 export type DealProduct = {
   _id: string;
 
+  /*
+   * External Rate List identity.
+   *
+   * Legacy productId is retained only for compatibility with
+   * older Deal records while backend migration completes.
+   */
+  externalProductId?: string | null;
+  externalCatalogId?: string | null;
   productId?: string | null;
 
   name?: string;
-
   sku?: string;
+  type?: string | null;
+  brand?: string | { id?: string | null; name?: string | null } | null;
+  category?: string | { id?: string | null; name?: string | null } | null;
 
   model?: string;
-
   capacityRating?: string;
 
+  rate?: number | null;
   pricing?: DealProductPricing | null;
 
-  images: DealProductImage[];
+  imageUrl?: string | null;
+  imageThumbUrl?: string | null;
 
+  images: DealProductImage[];
   primaryImage: DealProductImage | null;
 
   status?: string | null;
@@ -452,34 +464,24 @@ function normalizeDealProduct(
     "string"
   ) {
     return {
-      _id:
-        product,
-
-      productId:
-        null,
-
-      name:
-        "",
-
-      sku:
-        "",
-
-      model:
-        "",
-
-      capacityRating:
-        "",
-
-      pricing:
-        null,
-
+      _id: product,
+      externalProductId: product,
+      externalCatalogId: product,
+      productId: null,
+      name: "",
+      sku: "",
+      type: null,
+      brand: null,
+      category: null,
+      model: "",
+      capacityRating: "",
+      rate: null,
+      pricing: null,
+      imageUrl: null,
+      imageThumbUrl: null,
       images: [],
-
-      primaryImage:
-        null,
-
-      status:
-        null,
+      primaryImage: null,
+      status: null,
     };
   }
 
@@ -493,6 +495,22 @@ function normalizeDealProduct(
       product.primaryImage
     );
 
+  const externalImageUrl =
+    product.imageUrl ||
+    product.imageThumbUrl ||
+    null;
+
+  const externalImage =
+    externalImageUrl
+      ? {
+          _id: null,
+          url: String(externalImageUrl),
+          alt: product.name || "",
+          isPrimary: true,
+          sortOrder: 0,
+        } satisfies DealProductImage
+      : null;
+
   const primaryImage =
     normalizedPrimaryImage ||
     images.find(
@@ -502,6 +520,7 @@ function normalizeDealProduct(
         image.isPrimary
     ) ||
     images[0] ||
+    externalImage ||
     null;
 
   const pricing =
@@ -525,16 +544,36 @@ function normalizeDealProduct(
                 .oldPrice
             ),
         }
-      : null;
+      : product.rate !== null &&
+        product.rate !== undefined
+        ? {
+            currency: "PKR" as DealCurrency,
+            sellingPrice: normalizeNumber(product.rate, 0),
+            oldPrice: null,
+          }
+        : null;
+
+  const externalProductId =
+    product.externalProductId ||
+    product.externalCatalogId ||
+    product.productId ||
+    product._id ||
+    "";
 
   return {
     ...product,
 
-    _id:
-      String(
-        product._id ||
-        ""
-      ),
+    _id: String(externalProductId),
+
+    externalProductId:
+      product.externalProductId ||
+      product.externalCatalogId ||
+      null,
+
+    externalCatalogId:
+      product.externalCatalogId ||
+      product.externalProductId ||
+      null,
 
     productId:
       product.productId ||
@@ -556,7 +595,18 @@ function normalizeDealProduct(
       product.capacityRating ||
       "",
 
+    rate:
+      normalizeNullableNumber(product.rate),
+
     pricing,
+
+    imageUrl:
+      product.imageUrl ||
+      externalImageUrl,
+
+    imageThumbUrl:
+      product.imageThumbUrl ||
+      null,
 
     images,
 
@@ -1110,6 +1160,8 @@ export function getDealProductId(
     | undefined
 ) {
   return (
+    product?.externalProductId ||
+    product?.externalCatalogId ||
     product?.productId ||
     product?._id ||
     ""
@@ -1129,8 +1181,8 @@ export function getDealProductSellingPrice(
     | undefined
 ) {
   return normalizeNumber(
-    product?.pricing
-      ?.sellingPrice,
+    product?.rate ??
+      product?.pricing?.sellingPrice,
     0
   );
 }
@@ -1308,6 +1360,8 @@ export function getDealProductImageAlt(
   return (
     image?.alt ||
     product?.name ||
+    product?.externalProductId ||
+    product?.externalCatalogId ||
     product?.productId ||
     "Solar Trade Hub product"
   );

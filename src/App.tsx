@@ -34,6 +34,7 @@ import SuppliersList from "./pages/Suppliers/SuppliersList";
 import AddSupplier from "./pages/Suppliers/AddSupplier";
 import ViewSupplier from "./pages/Suppliers/ViewSupplier";
 import EditSupplier from "./pages/Suppliers/EditSupplier";
+import SupplierApplications from "./pages/Suppliers/SupplierApplications";
 import SupplierVerification from "./pages/Suppliers/SupplierVerification";
 
 import RangeTokens from "./pages/Marketplace/RangeTokens";
@@ -270,6 +271,11 @@ export default function App() {
               <Route
                 path="/suppliers/add"
                 element={<AddSupplier />}
+              />
+
+              <Route
+                path="/suppliers/applications"
+                element={<SupplierApplications />}
               />
 
               <Route

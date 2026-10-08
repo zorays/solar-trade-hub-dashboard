@@ -436,6 +436,16 @@ const sections: MenuSection[] = [
           },
 
           {
+            name: "Applications",
+            path: "/suppliers/applications",
+            access: {
+              anyOf: [
+                "suppliers.manage",
+              ],
+            },
+          },
+
+          {
             name: "Verification",
             path: "/suppliers/verification",
             access: {

@@ -159,27 +159,16 @@ export type CreateSupplierPayload = {
 
   description?: string;
 
-  /*
-   * Backend accepts these fields during supplier create.
-   * New supplier defaults to pending when omitted.
-   */
-  verificationStatus?:
-    SupplierVerificationStatus;
-
-  verificationNotes?: string;
-
   isFeatured?: boolean;
 
   sortOrder?: number;
-
-  status?:
-    SupplierStatus;
 };
 
 /* =========================================================
    UPDATE PAYLOAD
 
-   Backend accepts the same editable supplier fields.
+   Profile-only fields. Workflow state is updated through
+   dedicated status / verification endpoints.
 ========================================================= */
 
 export type UpdateSupplierPayload =

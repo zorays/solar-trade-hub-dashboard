@@ -145,10 +145,10 @@ const faqItems: FAQItem[] = [
     category: "Technical",
 
     question:
-      "Why is a dashboard page showing placeholder data?",
+      "What should I do if dashboard data does not refresh?",
 
     answer:
-      "Some Solar Trade Hub dashboard modules may continue using placeholder data until their respective backend workflows are connected.",
+      "Use the page refresh action first. If the issue continues, confirm your dashboard permissions and API connectivity, then submit a support request with the affected module and error details.",
   },
 
   {

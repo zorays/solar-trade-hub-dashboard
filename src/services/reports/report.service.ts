@@ -199,6 +199,100 @@ export type UsersReport = {
     string;
 };
 
+
+/* =========================================================
+   MARKETPLACE PERFORMANCE REPORT
+========================================================= */
+
+export type MarketplaceReportActivity = {
+  products: number | null;
+  suppliers: number;
+  installers: number;
+  openTenders: number;
+  activeDeals: number;
+  registeredUsers: number;
+};
+
+export type MarketplaceTopCategory = {
+  id: string;
+  name: string;
+  products: number;
+  orders: number;
+  revenue: number;
+  averageOrder: number;
+};
+
+export type MarketplaceSupply = {
+  activeSuppliers: number;
+  verifiedSuppliers: number;
+  registeredInstallers: number;
+  installerApplications: number;
+};
+
+export type MarketplaceDemand = {
+  orders: number;
+  openTenders: number;
+  activeDeals: number;
+  newUsers: number;
+};
+
+export type MarketplaceReport = {
+  range: ReportRange;
+  period: ReportPeriod;
+  metrics: {
+    marketplaceRevenue: ReportMetric;
+    orders: ReportMetric;
+    newUsers: ReportMetric;
+    activeSuppliers: ReportMetric;
+  };
+  activity: MarketplaceReportActivity;
+  topCategories: MarketplaceTopCategory[];
+  supply: MarketplaceSupply;
+  demand: MarketplaceDemand;
+  metricBasis?: Record<string, string>;
+};
+
+/* =========================================================
+   ORDERS PERFORMANCE REPORT
+========================================================= */
+
+export type ReportBreakdownItem = {
+  label: string;
+  value: number;
+  percentage: number;
+};
+
+export type OrdersCategoryPerformance = {
+  id: string;
+  name: string;
+  products: number;
+  orders: number;
+  revenue: number;
+  averageOrder: number;
+};
+
+export type MonthlyOrderData = {
+  key: string;
+  label: string;
+  orders: number;
+};
+
+export type OrdersReport = {
+  range: ReportRange;
+  period: ReportPeriod;
+  metrics: {
+    totalOrders: ReportMetric;
+    completedOrders: ReportMetric;
+    orderRevenue: ReportMetric;
+    averageOrderValue: ReportMetric;
+  };
+  statusBreakdown: ReportBreakdownItem[];
+  paymentBreakdown: ReportBreakdownItem[];
+  categoryOrders: OrdersCategoryPerformance[];
+  monthlyOrders: MonthlyOrderData[];
+  metricBasis?: Record<string, string>;
+};
+
 /* =========================================================
    API RESPONSE
 ========================================================= */
@@ -282,6 +376,53 @@ export const getUsersReport =
         ApiResponse<UsersReport>
       >(
         "/reports/users",
+        {
+          params: {
+            range,
+          },
+        }
+      );
+
+    return response.data.data;
+  };
+
+
+/* =========================================================
+   GET MARKETPLACE PERFORMANCE REPORT
+========================================================= */
+
+export const getMarketplaceReport =
+  async (
+    range: ReportRange = "30d"
+  ): Promise<MarketplaceReport> => {
+    const response =
+      await api.get<
+        ApiResponse<MarketplaceReport>
+      >(
+        "/reports/marketplace",
+        {
+          params: {
+            range,
+          },
+        }
+      );
+
+    return response.data.data;
+  };
+
+/* =========================================================
+   GET ORDERS PERFORMANCE REPORT
+========================================================= */
+
+export const getOrdersReport =
+  async (
+    range: ReportRange = "30d"
+  ): Promise<OrdersReport> => {
+    const response =
+      await api.get<
+        ApiResponse<OrdersReport>
+      >(
+        "/reports/orders",
         {
           params: {
             range,
@@ -413,6 +554,35 @@ export const formatReportPercentage =
     ).toFixed(
       1
     )}%`;
+  };
+
+
+/* =========================================================
+   FORMAT REPORT CURRENCY
+========================================================= */
+
+export const formatReportCurrency =
+  (
+    value:
+      | number
+      | null
+      | undefined,
+    currency = "PKR"
+  ) => {
+    return new Intl.NumberFormat(
+      "en-PK",
+      {
+        style:
+          "currency",
+        currency,
+        maximumFractionDigits:
+          0,
+      }
+    ).format(
+      Number(
+        value || 0
+      )
+    );
   };
 
 /* =========================================================

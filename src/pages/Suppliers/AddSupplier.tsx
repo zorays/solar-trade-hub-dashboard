@@ -13,7 +13,6 @@ import {
 import {
   Building2,
   ChevronDown,
-  CircleAlert,
   ImageIcon,
   RefreshCw,
   RotateCcw,
@@ -34,6 +33,8 @@ import Button from "../../components/ui/button/Button";
 import {
   createSupplier,
   getSupplierErrorMessage,
+  updateSupplierStatus,
+  updateSupplierVerification,
   type CreateSupplierPayload,
   type SupplierBusinessType,
   type SupplierStatus,
@@ -658,12 +659,6 @@ export default function AddSupplier() {
       description:
         form.description.trim(),
 
-      verificationStatus:
-        form.verificationStatus,
-
-      verificationNotes:
-        form.verificationNotes.trim(),
-
       isFeatured:
         form.isFeatured,
 
@@ -672,9 +667,6 @@ export default function AddSupplier() {
           form.sortOrder ||
             0
         ),
-
-      status:
-        form.status,
     });
 
   /* =======================================================
@@ -705,10 +697,70 @@ export default function AddSupplier() {
           true
         );
 
-        const supplier =
+        let supplier =
           await createSupplier(
             buildPayload()
           );
+
+        /*
+         * Supplier profile creation is intentionally separate
+         * from workflow state. The backend rejects status and
+         * verification fields on generic create/update routes.
+         */
+        try {
+          if (
+            form.status !==
+            supplier.status
+          ) {
+            supplier =
+              await updateSupplierStatus(
+                supplier.supplierId,
+                form.status
+              );
+          }
+
+          if (
+            form.verificationStatus !==
+              supplier.verificationStatus ||
+            form.verificationNotes.trim() !==
+              (supplier.verificationNotes || "").trim()
+          ) {
+            supplier =
+              await updateSupplierVerification(
+                supplier.supplierId,
+                {
+                  verificationStatus:
+                    form.verificationStatus,
+                  verificationNotes:
+                    form.verificationNotes.trim(),
+                }
+              );
+          }
+        } catch (workflowError) {
+          toast.warning(
+            "Supplier created, but workflow state needs review.",
+            {
+              description:
+                getSupplierErrorMessage(
+                  workflowError,
+                  "Open the supplier and update status / verification manually."
+                ),
+            }
+          );
+
+          window.setTimeout(
+            () => {
+              navigate(
+                `/suppliers/${encodeURIComponent(
+                  supplier.supplierId
+                )}`
+              );
+            },
+            800
+          );
+
+          return;
+        }
 
         toast.success(
           "Supplier added successfully.",
