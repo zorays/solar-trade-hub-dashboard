@@ -21,6 +21,14 @@ export const USER_ACCOUNT_TYPES = [
 export type UserAccountType =
   (typeof USER_ACCOUNT_TYPES)[number];
 
+export const USER_MARKETPLACE_INTENTS = [
+  "customer",
+  "supplier",
+] as const;
+
+export type UserMarketplaceIntent =
+  (typeof USER_MARKETPLACE_INTENTS)[number];
+
 export const USER_PROVIDERS = [
   "local",
   "google",
@@ -74,6 +82,9 @@ export type DashboardUser = {
   accountType:
     UserAccountType;
 
+  marketplaceIntent:
+    UserMarketplaceIntent;
+
   name: string;
   email: string;
 
@@ -121,6 +132,10 @@ export type UserListParams = {
 
   accountType?:
     | UserAccountType
+    | "";
+
+  marketplaceIntent?:
+    | UserMarketplaceIntent
     | "";
 
   role?: string;
@@ -266,6 +281,15 @@ const normalizeAccountType = (
     : "dashboard";
 };
 
+const normalizeMarketplaceIntent = (
+  value: unknown
+): UserMarketplaceIntent => {
+  return value ===
+    "supplier"
+    ? "supplier"
+    : "customer";
+};
+
 const normalizeProvider = (
   value: unknown
 ): UserProvider => {
@@ -385,6 +409,7 @@ const normalizeUser = (
             id?: unknown;
 
             accountType?: unknown;
+            marketplaceIntent?: unknown;
 
             name?: unknown;
             email?: unknown;
@@ -445,6 +470,11 @@ const normalizeUser = (
     accountType:
       normalizeAccountType(
         user.accountType
+      ),
+
+    marketplaceIntent:
+      normalizeMarketplaceIntent(
+        user.marketplaceIntent
       ),
 
     name:

@@ -641,6 +641,9 @@ const CustomersList =
             accountType:
               "customer",
 
+            marketplaceIntent:
+              "customer",
+
             status:
               statusFilter,
 
@@ -682,7 +685,9 @@ const CustomersList =
                   user
                 ) =>
                   user.accountType ===
-                  "customer"
+                    "customer" &&
+                  user.marketplaceIntent !==
+                    "supplier"
               );
 
             setCustomers(
