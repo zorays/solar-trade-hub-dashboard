@@ -1,3 +1,4 @@
+
 import axios from "axios";
 
 import {
@@ -6,13 +7,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import {
   getProfile,
-  getStoredUser,
   isAdminUser,
   loginUser,
   logoutUser,
@@ -31,10 +32,18 @@ import {
 
 /* =========================================================
    SOLAR TRADE HUB DASHBOARD AUTH CONTEXT
+
+   - Dashboard accounts only
+   - Server-verified sessions
+   - JWT access/refresh token support
+   - Remember Me compatibility
+   - Protected login/logout lifecycle
+   - Role and permission refresh
+   - Cross-tab session synchronization
 ========================================================= */
 
 /* =========================================================
-   AUTH CONTEXT TYPE
+   TYPES
 ========================================================= */
 
 interface AuthContextValue {
@@ -59,9 +68,7 @@ interface AuthContextValue {
 
   refreshUser: () => Promise<AuthUser | null>;
 
-  setUser: (
-    user: AuthUser | null
-  ) => void;
+  setUser: (user: AuthUser | null) => void;
 }
 
 interface AuthProviderProps {
@@ -73,58 +80,76 @@ interface AuthProviderProps {
 ========================================================= */
 
 const AuthContext =
-  createContext<
-    AuthContextValue | undefined
-  >(undefined);
+  createContext<AuthContextValue | undefined>(
+    undefined
+  );
 
 /* =========================================================
-   DASHBOARD USER VALIDATION
+   VALIDATE DASHBOARD USER
 
-   Frontend validation is not a security boundary.
-   Backend authorization remains authoritative.
+   Browser-side validation is defensive only.
 
-   This prevents stale/wrong browser state from being treated
-   as a valid dashboard session.
+   Actual authentication and authorization must remain
+   enforced by the backend.
 ========================================================= */
 
 const isUsableDashboardUser = (
   user: AuthUser | null
 ): user is AuthUser => {
-  if (!user) {
+  if (!user || typeof user !== "object") {
     return false;
   }
 
+  if (user.accountType !== "dashboard") {
+    return false;
+  }
+
+  if (user.status !== "active") {
+    return false;
+  }
+
+  if (user.isVerified !== true) {
+    return false;
+  }
+
+  const role =
+    typeof user.role === "string"
+      ? user.role.trim().toLowerCase()
+      : "";
+
   if (
-    user.accountType !==
-    "dashboard"
+    !role ||
+    role === "user" ||
+    role === "customer"
   ) {
     return false;
   }
 
+  /* System administrators */
+
   if (
-    user.status !==
-    "active"
+    role === "admin" ||
+    role === "super_admin"
   ) {
+    return true;
+  }
+
+  /* Custom roles require a valid active role document. */
+
+  if (!user.roleDetails) {
     return false;
   }
 
-  /*
-   * "user" is the registered-but-unassigned Dashboard role.
-   *
-   * Current backend does not allow Dashboard access until an
-   * admin assigns a system/custom role.
-   */
-  if (
-    user.role ===
-    "user"
-  ) {
+  const roleSlug =
+    typeof user.roleDetails.slug === "string"
+      ? user.roleDetails.slug.trim().toLowerCase()
+      : "";
+
+  if (roleSlug !== role) {
     return false;
   }
 
-  if (
-    user.role ===
-    "customer"
-  ) {
+  if (user.roleDetails.status !== "active") {
     return false;
   }
 
@@ -132,48 +157,33 @@ const isUsableDashboardUser = (
 };
 
 /* =========================================================
-   SESSION TOKEN CHECK
+   TOKEN CHECK
 
-   A refresh token alone can recover an expired/missing
-   access token through the Axios response interceptor.
+   A refresh token may be sufficient for Axios to recover
+   an expired access token through the response interceptor.
 ========================================================= */
 
-const hasAuthSession =
-  (): boolean => {
-    return Boolean(
-      getAccessToken() ||
-        getRefreshToken()
-    );
-  };
+const hasAuthSession = (): boolean =>
+  Boolean(getAccessToken() || getRefreshToken());
 
 /* =========================================================
-   INVALID SESSION ERROR CHECK
+   DEFINITIVE SESSION FAILURE
 
-   Only definitive authentication/authorization failures
-   should destroy saved authentication.
+   A temporary network issue must not erase stored tokens.
 
-   A temporary network/server failure should not erase a
-   user's remembered login credentials.
+   401 / 403 are treated as authorization failures.
 ========================================================= */
 
 const shouldClearSession = (
   error: unknown
 ): boolean => {
-  if (
-    !axios.isAxiosError(
-      error
-    )
-  ) {
+  if (!axios.isAxiosError(error)) {
     return false;
   }
 
-  const status =
-    error.response?.status;
+  const status = error.response?.status;
 
-  return (
-    status === 401 ||
-    status === 403
-  );
+  return status === 401 || status === 403;
 };
 
 /* =========================================================
@@ -184,642 +194,461 @@ export function AuthProvider({
   children,
 }: AuthProviderProps) {
   /* =======================================================
-     INITIAL STORED USER
+     AUTHENTICATED USER
 
-     This state is temporary until initialization verifies
-     the session against /auth/profile.
+     Never initialize authenticated React state directly
+     from localStorage or sessionStorage.
+
+     GET /auth/profile must verify the session first.
   ======================================================= */
 
-  const [
-    user,
-    setUserState,
-  ] =
-    useState<AuthUser | null>(
-      () => {
-        const storedUser =
-          getStoredUser();
+  const [user, setUserState] =
+    useState<AuthUser | null>(null);
 
-        return isUsableDashboardUser(
-          storedUser
-        )
-          ? storedUser
-          : null;
-      }
-    );
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
+  const [isLoading, setIsLoading] =
     useState(true);
 
   /* =======================================================
-     SAFE USER SETTER
+     REQUEST GENERATION
+
+     Prevent an older asynchronous profile response from
+     overwriting a newer login/logout/session decision.
   ======================================================= */
 
-  const setUser =
-    useCallback(
-      (
-        nextUser:
-          AuthUser | null
-      ) => {
-        if (
-          nextUser ===
-          null
-        ) {
-          setUserState(
-            null
-          );
-
-          return;
-        }
-
-        if (
-          !isUsableDashboardUser(
-            nextUser
-          )
-        ) {
-          setUserState(
-            null
-          );
-
-          return;
-        }
-
-        setUserState(
-          nextUser
-        );
-      },
-      []
-    );
+  const authGeneration = useRef(0);
 
   /* =======================================================
-     REFRESH AUTHENTICATED USER
+     SAFE SET USER
 
-     Works when either:
+     Preserves existing AuthContext API used by profile
+     and dashboard components.
 
-     - valid access token exists
-     - refresh token exists and Axios can recover session
+     This function is for trusted in-app updates only.
+     It does not authenticate a new browser session.
   ======================================================= */
 
-  const refreshUser =
-    useCallback(
-      async (): Promise<AuthUser | null> => {
-        if (
-          !hasAuthSession()
-        ) {
-          clearAuthStorage();
+  const setUser = useCallback(
+    (nextUser: AuthUser | null): void => {
+      if (nextUser === null) {
+        setUserState(null);
+        return;
+      }
 
-          setUserState(
-            null
-          );
+      if (
+        !hasAuthSession() ||
+        !isUsableDashboardUser(nextUser)
+      ) {
+        setUserState(null);
+        return;
+      }
 
-          return null;
-        }
-
-        try {
-          const profile =
-            await getProfile();
-
-          if (
-            !isUsableDashboardUser(
-              profile
-            )
-          ) {
-            clearAuthStorage();
-
-            setUserState(
-              null
-            );
-
-            return null;
-          }
-
-          setUserState(
-            profile
-          );
-
-          return profile;
-        } catch (
-          error
-        ) {
-          /*
-           * 401 / 403 means the session is definitively no
-           * longer authorized.
-           *
-           * Network errors and temporary 5xx failures do not
-           * erase remembered authentication tokens.
-           */
-          if (
-            shouldClearSession(
-              error
-            )
-          ) {
-            clearAuthStorage();
-
-            setUserState(
-              null
-            );
-          }
-
-          return null;
-        }
-      },
-      []
-    );
-
-  /* =======================================================
-     INITIALIZE SAVED SESSION
-
-     Application startup:
-
-     Browser storage
-          ↓
-     token exists?
-          ↓
-     GET /auth/profile
-          ↓
-     Axios automatically refreshes expired access token
-          ↓
-     backend returns latest dashboard user
-          ↓
-     context authenticated
-  ======================================================= */
-
-  useEffect(
-    () => {
-      let active =
-        true;
-
-      const initializeAuth =
-        async () => {
-          try {
-            /* =============================================
-               NO SESSION
-            ============================================= */
-
-            if (
-              !hasAuthSession()
-            ) {
-              clearAuthStorage();
-
-              if (
-                active
-              ) {
-                setUserState(
-                  null
-                );
-              }
-
-              return;
-            }
-
-            /* =============================================
-               VALIDATE SESSION AGAINST BACKEND
-            ============================================= */
-
-            const profile =
-              await getProfile();
-
-            if (
-              !active
-            ) {
-              return;
-            }
-
-            if (
-              !isUsableDashboardUser(
-                profile
-              )
-            ) {
-              clearAuthStorage();
-
-              setUserState(
-                null
-              );
-
-              return;
-            }
-
-            setUserState(
-              profile
-            );
-          } catch (
-            error
-          ) {
-            if (
-              !active
-            ) {
-              return;
-            }
-
-            /*
-             * Invalid/unauthorized sessions are removed.
-             *
-             * Temporary API/network failures retain saved
-             * session credentials so the user is not logged
-             * out just because the backend briefly failed.
-             */
-            if (
-              shouldClearSession(
-                error
-              )
-            ) {
-              clearAuthStorage();
-
-              setUserState(
-                null
-              );
-
-              return;
-            }
-
-            /*
-             * During a temporary connectivity problem we may
-             * retain an already stored dashboard user for UI
-             * continuity.
-             *
-             * Backend authorization still protects all API
-             * operations.
-             */
-            const storedUser =
-              getStoredUser();
-
-            if (
-              isUsableDashboardUser(
-                storedUser
-              )
-            ) {
-              setUserState(
-                storedUser
-              );
-            } else {
-              setUserState(
-                null
-              );
-            }
-          } finally {
-            if (
-              active
-            ) {
-              setIsLoading(
-                false
-              );
-            }
-          }
-        };
-
-      void initializeAuth();
-
-      return () => {
-        active =
-          false;
-      };
+      setUserState(nextUser);
     },
     []
   );
 
   /* =======================================================
-     PROFILE UPDATE EVENT
+     REFRESH AUTHENTICATED PROFILE
 
-     Profile/avatar components may dispatch:
+     Backend /auth/profile is authoritative.
+
+     Invalid/revoked sessions:
+       Clear tokens and state.
+
+     Temporary network failures:
+       Preserve tokens, deny authenticated UI until
+       a successful verification.
+  ======================================================= */
+
+  const refreshUser =
+    useCallback(async (): Promise<AuthUser | null> => {
+      const generation = ++authGeneration.current;
+
+      if (!hasAuthSession()) {
+        clearAuthStorage();
+        setUserState(null);
+        return null;
+      }
+
+      try {
+        const profile = await getProfile();
+
+        if (
+          generation !== authGeneration.current
+        ) {
+          return null;
+        }
+
+        if (
+          !hasAuthSession() ||
+          !isUsableDashboardUser(profile)
+        ) {
+          clearAuthStorage();
+          setUserState(null);
+          return null;
+        }
+
+        setUserState(profile);
+        return profile;
+      } catch (error) {
+        if (
+          generation !== authGeneration.current
+        ) {
+          return null;
+        }
+
+        if (shouldClearSession(error)) {
+          clearAuthStorage();
+        }
+
+        /* Never authenticate from stale cached data. */
+        setUserState(null);
+        return null;
+      }
+    }, []);
+
+  /* =======================================================
+     INITIALIZE SAVED SESSION
+
+     Browser startup:
+       Check tokens
+         -> GET /auth/profile
+         -> Axios may refresh expired access token
+         -> Validate dashboard account and role
+         -> Set authenticated state
+
+     Temporary API failure:
+       Preserve tokens but do not unlock dashboard.
+  ======================================================= */
+
+  useEffect(() => {
+    let active = true;
+
+    const generation = ++authGeneration.current;
+
+    const initializeAuth = async (): Promise<void> => {
+      try {
+        if (!hasAuthSession()) {
+          clearAuthStorage();
+
+          if (
+            active &&
+            generation === authGeneration.current
+          ) {
+            setUserState(null);
+          }
+
+          return;
+        }
+
+        const profile = await getProfile();
+
+        if (
+          !active ||
+          generation !== authGeneration.current
+        ) {
+          return;
+        }
+
+        if (
+          !hasAuthSession() ||
+          !isUsableDashboardUser(profile)
+        ) {
+          clearAuthStorage();
+          setUserState(null);
+          return;
+        }
+
+        setUserState(profile);
+      } catch (error) {
+        if (
+          !active ||
+          generation !== authGeneration.current
+        ) {
+          return;
+        }
+
+        if (shouldClearSession(error)) {
+          clearAuthStorage();
+        }
+
+        /* Keep credentials on transient errors,
+           but do not trust an unverified cached user. */
+        setUserState(null);
+      } finally {
+        if (
+          active &&
+          generation === authGeneration.current
+        ) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void initializeAuth();
+
+    return () => {
+      active = false;
+
+      if (authGeneration.current === generation) {
+        authGeneration.current += 1;
+      }
+    };
+  }, []);
+
+  /* =======================================================
+     PROFILE UPDATED EVENT
+
+     Existing profile/avatar pages can dispatch:
 
      window.dispatchEvent(
        new CustomEvent("profile:updated")
      );
 
-     Context then reloads the authoritative backend profile.
+     This refreshes the authoritative backend profile.
   ======================================================= */
 
-  useEffect(
-    () => {
-      const handleProfileUpdated =
-        () => {
-          void refreshUser();
-        };
+  useEffect(() => {
+    const handleProfileUpdated = () => {
+      void refreshUser();
+    };
 
-      window.addEventListener(
+    window.addEventListener(
+      "profile:updated",
+      handleProfileUpdated
+    );
+
+    return () => {
+      window.removeEventListener(
         "profile:updated",
         handleProfileUpdated
       );
-
-      return () => {
-        window.removeEventListener(
-          "profile:updated",
-          handleProfileUpdated
-        );
-      };
-    },
-    [
-      refreshUser,
-    ]
-  );
+    };
+  }, [refreshUser]);
 
   /* =======================================================
-     CROSS-TAB SESSION SYNC
+     CROSS-TAB SESSION SYNCHRONIZATION
 
-     Relevant mainly when Remember Me uses localStorage.
+     localStorage is shared across tabs.
+     sessionStorage remains per-tab.
 
-     Example:
+     When another tab logs out, this tab removes
+     authenticated state.
 
-     Tab A logs out
-          ↓
-     localStorage cleared
-          ↓
-     Tab B receives storage event
-          ↓
-     AuthContext updates
+     When another tab establishes/changes a remembered
+     session, verify it against the backend.
   ======================================================= */
 
-  useEffect(
-    () => {
-      const handleStorageChange =
-        (
-          event: StorageEvent
-        ) => {
-          const relevantKeys = [
-            "accessToken",
-            "refreshToken",
-            "authUser",
-          ];
+  useEffect(() => {
+    const handleStorageChange = (
+      event: StorageEvent
+    ): void => {
+      if (event.storageArea !== localStorage) {
+        return;
+      }
 
-          if (
-            event.key !==
-              null &&
-            !relevantKeys.includes(
-              event.key
-            )
-          ) {
-            return;
-          }
+      const relevantKeys = [
+        "accessToken",
+        "refreshToken",
+        "authUser",
+      ];
 
-          if (
-            !hasAuthSession()
-          ) {
-            setUserState(
-              null
-            );
+      if (
+        event.key !== null &&
+        !relevantKeys.includes(event.key)
+      ) {
+        return;
+      }
 
-            return;
-          }
+      if (!hasAuthSession()) {
+        authGeneration.current += 1;
+        setUserState(null);
+        return;
+      }
 
-          const storedUser =
-            getStoredUser();
+      /*
+       * A changed authUser or accessToken may represent
+       * an updated remembered session.
+       *
+       * Verify the latest profile instead of trusting
+       * browser storage directly.
+       */
+      if (
+        event.key === "authUser" ||
+        event.key === "accessToken" ||
+        event.key === null
+      ) {
+        setUserState(null);
+        void refreshUser();
+      }
+    };
 
-          if (
-            isUsableDashboardUser(
-              storedUser
-            )
-          ) {
-            setUserState(
-              storedUser
-            );
-          }
-        };
+    window.addEventListener(
+      "storage",
+      handleStorageChange
+    );
 
-      window.addEventListener(
+    return () => {
+      window.removeEventListener(
         "storage",
         handleStorageChange
       );
-
-      return () => {
-        window.removeEventListener(
-          "storage",
-          handleStorageChange
-        );
-      };
-    },
-    []
-  );
+    };
+  }, [refreshUser]);
 
   /* =======================================================
      LOGIN
 
-     auth.service.ts performs:
+     auth.service.ts sends:
 
      POST /auth/login
-
      {
        source: "dashboard",
        email,
        password
      }
 
-     Successful login requires:
-
-     - dashboard account
-     - active account
-     - verified email when required
-     - assigned dashboard role
+     Remember Me is managed by auth.service.ts/api.ts.
   ======================================================= */
 
-  const login =
-    useCallback(
-      async (
-        payload:
-          LoginPayload,
+  const login = useCallback(
+    async (
+      payload: LoginPayload,
+      rememberMe = false
+    ): Promise<AuthResponse> => {
+      const generation = ++authGeneration.current;
 
-        rememberMe =
-          false
-      ): Promise<AuthResponse> => {
-        const response =
-          await loginUser(
-            payload,
-            rememberMe
-          );
+      const response = await loginUser(
+        payload,
+        rememberMe
+      );
 
-        /*
-         * loginUser() already requires the backend to return
-         * user + access token + refresh token.
-         */
-        if (
-          !response.user
-        ) {
-          clearAuthStorage();
-
-          setUserState(
-            null
-          );
-
-          throw new Error(
-            "Authenticated user information was not returned by the server."
-          );
-        }
-
-        if (
-          !isUsableDashboardUser(
-            response.user
-          )
-        ) {
-          clearAuthStorage();
-
-          setUserState(
-            null
-          );
-
-          throw new Error(
-            "This account does not currently have access to the Solar Trade Hub dashboard."
-          );
-        }
-
-        setUserState(
-          response.user
+      if (
+        generation !== authGeneration.current
+      ) {
+        throw new Error(
+          "Authentication session changed during sign in."
         );
+      }
 
-        return response;
-      },
-      []
-    );
+      if (
+        !response.user ||
+        !isUsableDashboardUser(response.user) ||
+        !hasAuthSession()
+      ) {
+        clearAuthStorage();
+        setUserState(null);
+
+        throw new Error(
+          "This account does not currently have access to the Solar Trade Hub dashboard."
+        );
+      }
+
+      setUserState(response.user);
+
+      return response;
+    },
+    []
+  );
 
   /* =======================================================
      REGISTER DASHBOARD USER
 
-     Current Dashboard registration flow:
+     Registration remains unauthenticated.
 
-     register
-        ↓
-     no authenticated session
-        ↓
-     email verification
-        ↓
-     admin assigns role
-        ↓
-     sign in
-
-     The only special bootstrap case is controlled entirely
-     by the backend via FIRST_SUPER_ADMIN_EMAIL.
+     Backend controls:
+       Email verification
+       Role assignment
+       First super-admin bootstrap
   ======================================================= */
 
-  const register =
-    useCallback(
-      async (
-        payload:
-          RegisterPayload
-      ): Promise<AuthResponse> => {
-        /*
-         * Remove any stale previous session before creating
-         * another Dashboard account.
-         */
-        clearAuthStorage();
+  const register = useCallback(
+    async (
+      payload: RegisterPayload
+    ): Promise<AuthResponse> => {
+      authGeneration.current += 1;
 
-        setUserState(
-          null
-        );
+      clearAuthStorage();
+      setUserState(null);
 
-        const response =
-          await registerUser(
-            payload
-          );
+      const response = await registerUser(payload);
 
-        /*
-         * Registration deliberately remains unauthenticated.
-         *
-         * Do not set response.user into AuthContext here.
-         */
-        setUserState(
-          null
-        );
+      setUserState(null);
 
-        return response;
-      },
-      []
-    );
+      return response;
+    },
+    []
+  );
 
   /* =======================================================
      LOGOUT
+
+     Always remove local session, even when the logout
+     request fails.
+
+     Preserve the logout Promise API for existing callers.
   ======================================================= */
 
-  const logout =
-    useCallback(
-      async (): Promise<void> => {
-        try {
-          /*
-           * Backend clears/revokes the stored refresh token.
-           */
-          await logoutUser();
-        } finally {
-          /*
-           * Local session must disappear regardless of API
-           * availability.
-           */
-          clearAuthStorage();
+  const logout = useCallback(
+    async (): Promise<void> => {
+      authGeneration.current += 1;
 
-          setUserState(
-            null
-          );
-        }
-      },
-      []
-    );
+      try {
+        await logoutUser();
+      } finally {
+        clearAuthStorage();
+        setUserState(null);
+      }
+    },
+    []
+  );
 
   /* =======================================================
      AUTHENTICATION STATE
 
-     Both conditions required:
-
-     1. valid Dashboard user in context
-     2. access or refresh token available
+     User must have been accepted by the current
+     authentication flow, not merely read from storage.
   ======================================================= */
 
   const isAuthenticated =
-    Boolean(
-      isUsableDashboardUser(
-        user
-      )
-    ) &&
+    isUsableDashboardUser(user) &&
     hasAuthSession();
 
   /* =======================================================
      CONTEXT VALUE
   ======================================================= */
 
-  const value =
-    useMemo<AuthContextValue>(
-      () => ({
-        user,
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      isLoading,
+      isAuthenticated,
+      isAdmin: isAdminUser(user),
 
-        isLoading,
-
-        isAuthenticated,
-
-        isAdmin:
-          isAdminUser(
-            user
-          ),
-
-        login,
-
-        register,
-
-        logout,
-
-        refreshUser,
-
-        setUser,
-      }),
-
-      [
-        user,
-        isLoading,
-        isAuthenticated,
-        login,
-        register,
-        logout,
-        refreshUser,
-        setUser,
-      ]
-    );
+      login,
+      register,
+      logout,
+      refreshUser,
+      setUser,
+    }),
+    [
+      user,
+      isLoading,
+      isAuthenticated,
+      login,
+      register,
+      logout,
+      refreshUser,
+      setUser,
+    ]
+  );
 
   /* =======================================================
      PROVIDER
   ======================================================= */
 
   return (
-    <AuthContext.Provider
-      value={
-        value
-      }
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -830,14 +659,9 @@ export function AuthProvider({
 ========================================================= */
 
 export function useAuth(): AuthContextValue {
-  const context =
-    useContext(
-      AuthContext
-    );
+  const context = useContext(AuthContext);
 
-  if (
-    !context
-  ) {
+  if (!context) {
     throw new Error(
       "useAuth must be used inside AuthProvider"
     );

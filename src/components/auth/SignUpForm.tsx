@@ -1,3 +1,4 @@
+
 import {
   type FormEvent,
   useEffect,
@@ -15,9 +16,7 @@ import {
   EyeIcon,
 } from "../../icons";
 
-import {
-  useAuth,
-} from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 import {
   getAuthErrorMessage,
@@ -26,6 +25,28 @@ import {
 
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
+
+/* =========================================================
+   SOLAR TRADE HUB DASHBOARD
+   SIGN UP FORM
+
+   Official logo:
+   public/favicon.png
+
+   Registration flow:
+   1. Create dashboard account
+   2. Verify email
+   3. Administrator assigns role, where required
+   4. Sign in
+
+   Backend:
+   POST /api/v1/auth/register
+
+   Dashboard registration fields:
+   - name
+   - email
+   - password
+========================================================= */
 
 /* =========================================================
    VALIDATION
@@ -39,363 +60,244 @@ const EMAIL_PATTERN =
 ========================================================= */
 
 export default function SignUpForm() {
-  const navigate =
-    useNavigate();
+  const navigate = useNavigate();
 
   const {
     register,
     isAuthenticated,
     isLoading: authLoading,
-  } =
-    useAuth();
+  } = useAuth();
 
   /* =======================================================
      FORM STATE
   ======================================================= */
 
-  const [
-    name,
-    setName,
-  ] =
+  const [name, setName] = useState("");
+
+  const [email, setEmail] = useState("");
+
+  const [password, setPassword] = useState("");
+
+  const [confirmPassword, setConfirmPassword] =
     useState("");
 
-  const [
-    email,
-    setEmail,
-  ] =
-    useState("");
-
-  const [
-    password,
-    setPassword,
-  ] =
-    useState("");
-
-  const [
-    confirmPassword,
-    setConfirmPassword,
-  ] =
-    useState("");
-
-  const [
-    showPassword,
-    setShowPassword,
-  ] =
+  const [showPassword, setShowPassword] =
     useState(false);
 
   const [
     showConfirmPassword,
     setShowConfirmPassword,
-  ] =
+  ] = useState(false);
+
+  const [isSubmitting, setIsSubmitting] =
     useState(false);
 
-  const [
-    isSubmitting,
-    setIsSubmitting,
-  ] =
-    useState(false);
-
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
+  const [errorMessage, setErrorMessage] =
     useState("");
 
   /* =======================================================
-     REDIRECT EXISTING AUTHENTICATED USER
+     REDIRECT EXISTING AUTHENTICATED USERS
   ======================================================= */
 
-  useEffect(
-    () => {
-      if (
-        !authLoading &&
-        isAuthenticated
-      ) {
-        navigate(
-          "/",
-          {
-            replace: true,
-          }
-        );
-      }
-    },
-    [
-      authLoading,
-      isAuthenticated,
-      navigate,
-    ]
-  );
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate("/", {
+        replace: true,
+      });
+    }
+  }, [
+    authLoading,
+    isAuthenticated,
+    navigate,
+  ]);
 
   /* =======================================================
      CLEAR ERROR
   ======================================================= */
 
-  const clearError =
-    () => {
-      if (
-        errorMessage
-      ) {
-        setErrorMessage(
-          ""
-        );
-      }
-    };
+  const clearError = (): void => {
+    if (errorMessage) {
+      setErrorMessage("");
+    }
+  };
 
   /* =======================================================
      REGISTER
   ======================================================= */
 
-  const handleSubmit =
-    async (
-      event: FormEvent<HTMLFormElement>
-    ) => {
-      event.preventDefault();
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>
+  ): Promise<void> => {
+    event.preventDefault();
 
-      if (
-        isSubmitting ||
-        authLoading
-      ) {
-        return;
-      }
+    if (
+      isSubmitting ||
+      authLoading ||
+      isAuthenticated
+    ) {
+      return;
+    }
 
+    setErrorMessage("");
+
+    const normalizedName = name
+      .trim()
+      .replace(/\s+/g, " ");
+
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
+
+    /* =====================================================
+       NAME VALIDATION
+    ===================================================== */
+
+    if (!normalizedName) {
       setErrorMessage(
-        ""
+        "Please enter your full name."
       );
+      return;
+    }
 
-      const normalizedName =
-        name
-          .trim()
-          .replace(
-            /\s+/g,
-            " "
-          );
+    if (normalizedName.length < 2) {
+      setErrorMessage(
+        "Name must contain at least 2 characters."
+      );
+      return;
+    }
 
-      const normalizedEmail =
-        email
-          .trim()
-          .toLowerCase();
+    if (normalizedName.length > 150) {
+      setErrorMessage(
+        "Name cannot exceed 150 characters."
+      );
+      return;
+    }
 
-      /* ===================================================
-         NAME VALIDATION
-      =================================================== */
+    /* =====================================================
+       EMAIL VALIDATION
+    ===================================================== */
 
-      if (
-        !normalizedName
-      ) {
-        setErrorMessage(
-          "Please enter your full name."
-        );
+    if (!normalizedEmail) {
+      setErrorMessage(
+        "Please enter your email address."
+      );
+      return;
+    }
 
-        return;
-      }
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setErrorMessage(
+        "Please enter a valid email address."
+      );
+      return;
+    }
 
-      if (
-        normalizedName.length <
-        2
-      ) {
-        setErrorMessage(
-          "Name must contain at least 2 characters."
-        );
+    /* =====================================================
+       PASSWORD VALIDATION
+    ===================================================== */
 
-        return;
-      }
+    if (!password) {
+      setErrorMessage(
+        "Please enter a password."
+      );
+      return;
+    }
 
-      if (
-        normalizedName.length >
-        150
-      ) {
-        setErrorMessage(
-          "Name cannot exceed 150 characters."
-        );
+    if (password.length < 8) {
+      setErrorMessage(
+        "Password must contain at least 8 characters."
+      );
+      return;
+    }
 
-        return;
-      }
+    if (!confirmPassword) {
+      setErrorMessage(
+        "Please confirm your password."
+      );
+      return;
+    }
 
-      /* ===================================================
-         EMAIL VALIDATION
-      =================================================== */
+    if (password !== confirmPassword) {
+      setErrorMessage(
+        "Passwords do not match."
+      );
+      return;
+    }
 
-      if (
-        !normalizedEmail
-      ) {
-        setErrorMessage(
-          "Please enter your email address."
-        );
+    /* =====================================================
+       BACKEND REGISTRATION
+    ===================================================== */
 
-        return;
-      }
+    setIsSubmitting(true);
 
-      if (
-        !EMAIL_PATTERN.test(
-          normalizedEmail
-        )
-      ) {
-        setErrorMessage(
-          "Please enter a valid email address."
-        );
-
-        return;
-      }
-
-      /* ===================================================
-         PASSWORD VALIDATION
-      =================================================== */
-
-      if (
-        !password
-      ) {
-        setErrorMessage(
-          "Please enter a password."
-        );
-
-        return;
-      }
-
-      if (
-        password.length <
-        8
-      ) {
-        setErrorMessage(
-          "Password must contain at least 8 characters."
-        );
-
-        return;
-      }
-
-      if (
-        !confirmPassword
-      ) {
-        setErrorMessage(
-          "Please confirm your password."
-        );
-
-        return;
-      }
-
-      if (
-        password !==
-        confirmPassword
-      ) {
-        setErrorMessage(
-          "Passwords do not match."
-        );
-
-        return;
-      }
+    try {
+      const response = await register({
+        name: normalizedName,
+        email: normalizedEmail,
+        password,
+      });
 
       /* ===================================================
-         BACKEND REGISTRATION
+         REGISTRATION DOES NOT CREATE A LOGIN SESSION
+
+         Email verification and role assignment remain
+         managed by the existing backend.
       =================================================== */
 
-      try {
-        setIsSubmitting(
-          true
-        );
+      const verificationRequired =
+        response.emailVerification?.required ===
+        true;
 
-        const response =
-          await register({
-            name:
-              normalizedName,
+      const verificationSent =
+        response.emailVerification?.sent === true;
 
-            email:
-              normalizedEmail,
+      let message =
+        response.message ||
+        "Dashboard account created successfully.";
 
-            password,
-          });
-
-        /* =================================================
-           CURRENT DASHBOARD FLOW
-
-           register
-             ↓
-           email verification
-             ↓
-           role assignment
-             ↓
-           login
-
-           Registration does NOT create a logged-in session.
-        ================================================= */
-
-        const verificationRequired =
-          response
-            .emailVerification
-            ?.required ===
-          true;
-
-        const verificationSent =
-          response
-            .emailVerification
-            ?.sent ===
-          true;
-
-        let message =
-          response.message ||
-          "Dashboard account created successfully.";
-
-        if (
-          verificationRequired &&
-          verificationSent
-        ) {
-          message =
-            "Account created successfully. Please check your email and verify your account before signing in.";
-        }
-
-        if (
-          verificationRequired &&
-          !verificationSent
-        ) {
-          message =
-            "Your account was created, but the verification email could not be sent. Please request a new verification email before signing in.";
-        }
-
-        navigate(
-          "/signin",
-          {
-            replace:
-              true,
-
-            state: {
-              message,
-            },
-          }
-        );
-      } catch (
-        error
+      if (
+        verificationRequired &&
+        verificationSent
       ) {
-        const message =
-          getAuthErrorMessage(
-            error
-          );
-
-        const retryAfter =
-          getAuthRetryAfter(
-            error
-          );
-
-        if (
-          retryAfter !==
-            null &&
-          retryAfter > 0
-        ) {
-          setErrorMessage(
-            `${message} Please try again in ${retryAfter} second${
-              retryAfter === 1
-                ? ""
-                : "s"
-            }.`
-          );
-        } else {
-          setErrorMessage(
-            message
-          );
-        }
-      } finally {
-        setIsSubmitting(
-          false
-        );
+        message =
+          "Account created successfully. Please check your email and verify your account before signing in.";
       }
-    };
+
+      if (
+        verificationRequired &&
+        !verificationSent
+      ) {
+        message =
+          "Your account was created, but the verification email could not be sent. Please request a new verification email before signing in.";
+      }
+
+      navigate("/signin", {
+        replace: true,
+        state: {
+          message,
+        },
+      });
+    } catch (error) {
+      const message = getAuthErrorMessage(error);
+
+      const retryAfter =
+        getAuthRetryAfter(error);
+
+      if (
+        retryAfter !== null &&
+        retryAfter > 0
+      ) {
+        setErrorMessage(
+          `${message} Please try again in ${retryAfter} second${
+            retryAfter === 1 ? "" : "s"
+          }.`
+        );
+      } else {
+        setErrorMessage(message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   /* =======================================================
      RENDER
@@ -403,9 +305,10 @@ export default function SignUpForm() {
 
   return (
     <div className="w-full">
-      {/* ===================================================
+
+      {/* =================================================
           BACK
-      =================================================== */}
+      ================================================= */}
 
       <Link
         to="/"
@@ -416,31 +319,19 @@ export default function SignUpForm() {
         Back to dashboard
       </Link>
 
-      {/* ===================================================
-          BRAND
-      =================================================== */}
+      {/* =================================================
+          OFFICIAL SOLAR TRADE HUB BRAND
+      ================================================= */}
 
       <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ff4b1f]">
-          <svg
-            viewBox="0 0 40 40"
-            className="h-5 w-5"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 8H24L32 16L23 25L16 18L22 12"
-              stroke="white"
-              strokeWidth="4"
-            />
-
-            <path
-              d="M28 32H16L8 24L17 15L24 22L18 28"
-              stroke="white"
-              strokeWidth="4"
-            />
-          </svg>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-[0_8px_22px_rgba(255,75,31,0.22)]">
+          <img
+            src="/favicon.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-full w-full object-contain"
+          />
         </div>
 
         <div>
@@ -460,9 +351,9 @@ export default function SignUpForm() {
         </div>
       </div>
 
-      {/* ===================================================
+      {/* =================================================
           HEADER
-      =================================================== */}
+      ================================================= */}
 
       <div className="mb-6">
         <div className="mb-2 flex items-center gap-2">
@@ -478,13 +369,14 @@ export default function SignUpForm() {
         </h1>
 
         <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-          Create your Solar Trade Hub dashboard account.
+          Create your Solar Trade Hub dashboard
+          account.
         </p>
       </div>
 
-      {/* ===================================================
-          TABS
-      =================================================== */}
+      {/* =================================================
+          SIGN IN / SIGN UP TABS
+      ================================================= */}
 
       <div className="mb-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.05]">
         <Link
@@ -494,14 +386,17 @@ export default function SignUpForm() {
           Sign In
         </Link>
 
-        <div className="flex h-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-[#ff4b1f] shadow-sm dark:bg-white/[0.08]">
+        <div
+          className="flex h-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-[#ff4b1f] shadow-sm dark:bg-white/[0.08]"
+          aria-current="page"
+        >
           Sign Up
         </div>
       </div>
 
-      {/* ===================================================
-          ERROR
-      =================================================== */}
+      {/* =================================================
+          ERROR MESSAGE
+      ================================================= */}
 
       {errorMessage && (
         <div
@@ -512,25 +407,18 @@ export default function SignUpForm() {
         </div>
       )}
 
-      {/* ===================================================
-          FORM
-      =================================================== */}
+      {/* =================================================
+          REGISTRATION FORM
+      ================================================= */}
 
-      <form
-        onSubmit={
-          handleSubmit
-        }
-        noValidate
-      >
+      <form onSubmit={handleSubmit} noValidate>
         <div className="space-y-4">
-          {/* ===============================================
-              NAME
-          =============================================== */}
+
+          {/* FULL NAME */}
 
           <div>
-            <Label>
+            <Label htmlFor="name">
               Full Name
-
               <span className="text-error-500">
                 *
               </span>
@@ -542,30 +430,22 @@ export default function SignUpForm() {
               type="text"
               placeholder="Enter your full name"
               value={name}
-              onChange={(
-                event
-              ) => {
-                setName(
-                  event.target
-                    .value
-                );
-
+              onChange={(event) => {
+                setName(event.target.value);
                 clearError();
               }}
               disabled={
-                isSubmitting
+                isSubmitting ||
+                authLoading
               }
             />
           </div>
 
-          {/* ===============================================
-              EMAIL
-          =============================================== */}
+          {/* EMAIL */}
 
           <div>
-            <Label>
+            <Label htmlFor="email">
               Email
-
               <span className="text-error-500">
                 *
               </span>
@@ -577,30 +457,22 @@ export default function SignUpForm() {
               type="email"
               placeholder="Enter your email"
               value={email}
-              onChange={(
-                event
-              ) => {
-                setEmail(
-                  event.target
-                    .value
-                );
-
+              onChange={(event) => {
+                setEmail(event.target.value);
                 clearError();
               }}
               disabled={
-                isSubmitting
+                isSubmitting ||
+                authLoading
               }
             />
           </div>
 
-          {/* ===============================================
-              PASSWORD
-          =============================================== */}
+          {/* PASSWORD */}
 
           <div>
-            <Label>
+            <Label htmlFor="password">
               Password
-
               <span className="text-error-500">
                 *
               </span>
@@ -616,21 +488,14 @@ export default function SignUpForm() {
                     : "password"
                 }
                 placeholder="Enter your password"
-                value={
-                  password
-                }
-                onChange={(
-                  event
-                ) => {
-                  setPassword(
-                    event.target
-                      .value
-                  );
-
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
                   clearError();
                 }}
                 disabled={
-                  isSubmitting
+                  isSubmitting ||
+                  authLoading
                 }
               />
 
@@ -638,14 +503,12 @@ export default function SignUpForm() {
                 type="button"
                 onClick={() =>
                   setShowPassword(
-                    (
-                      previous
-                    ) =>
-                      !previous
+                    (previous) => !previous
                   )
                 }
                 disabled={
-                  isSubmitting
+                  isSubmitting ||
+                  authLoading
                 }
                 className="absolute right-4 top-1/2 z-30 -translate-y-1/2 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={
@@ -653,6 +516,7 @@ export default function SignUpForm() {
                     ? "Hide password"
                     : "Show password"
                 }
+                aria-pressed={showPassword}
               >
                 {showPassword ? (
                   <EyeIcon className="size-5 fill-gray-500 dark:fill-gray-400" />
@@ -667,14 +531,11 @@ export default function SignUpForm() {
             </p>
           </div>
 
-          {/* ===============================================
-              CONFIRM PASSWORD
-          =============================================== */}
+          {/* CONFIRM PASSWORD */}
 
           <div>
-            <Label>
+            <Label htmlFor="confirmPassword">
               Confirm Password
-
               <span className="text-error-500">
                 *
               </span>
@@ -690,21 +551,16 @@ export default function SignUpForm() {
                     : "password"
                 }
                 placeholder="Confirm your password"
-                value={
-                  confirmPassword
-                }
-                onChange={(
-                  event
-                ) => {
+                value={confirmPassword}
+                onChange={(event) => {
                   setConfirmPassword(
-                    event.target
-                      .value
+                    event.target.value
                   );
-
                   clearError();
                 }}
                 disabled={
-                  isSubmitting
+                  isSubmitting ||
+                  authLoading
                 }
               />
 
@@ -712,20 +568,21 @@ export default function SignUpForm() {
                 type="button"
                 onClick={() =>
                   setShowConfirmPassword(
-                    (
-                      previous
-                    ) =>
-                      !previous
+                    (previous) => !previous
                   )
                 }
                 disabled={
-                  isSubmitting
+                  isSubmitting ||
+                  authLoading
                 }
                 className="absolute right-4 top-1/2 z-30 -translate-y-1/2 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={
                   showConfirmPassword
                     ? "Hide confirmation password"
                     : "Show confirmation password"
+                }
+                aria-pressed={
+                  showConfirmPassword
                 }
               >
                 {showConfirmPassword ? (
@@ -737,34 +594,32 @@ export default function SignUpForm() {
             </div>
           </div>
 
-          {/* ===============================================
-              ACCOUNT INFORMATION
-          =============================================== */}
+          {/* ACCOUNT INFORMATION */}
 
           <div className="rounded-xl border border-[#5b2eff]/15 bg-[#5b2eff]/[0.04] px-4 py-3">
             <p className="text-xs leading-5 text-gray-600 dark:text-gray-400">
-              Dashboard accounts require email verification.
-              New staff accounts may also require an administrator
-              to assign a role before dashboard access is enabled.
+              Dashboard accounts require email
+              verification. New staff accounts may
+              also require an administrator to
+              assign a role before dashboard
+              access is enabled.
             </p>
           </div>
 
-          {/* ===============================================
-              SUBMIT
-          =============================================== */}
+          {/* SUBMIT */}
 
           <button
             type="submit"
             disabled={
               isSubmitting ||
-              authLoading
+              authLoading ||
+              isAuthenticated
             }
             className="flex h-11 w-full items-center justify-center rounded-xl bg-[#ff4b1f] text-sm font-semibold text-white transition hover:bg-[#e83c12] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <span className="flex items-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-
                 Creating Account...
               </span>
             ) : authLoading ? (
@@ -776,9 +631,9 @@ export default function SignUpForm() {
         </div>
       </form>
 
-      {/* ===================================================
-          SIGN IN
-      =================================================== */}
+      {/* =================================================
+          SIGN IN LINK
+      ================================================= */}
 
       <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
         Already have an account?{" "}

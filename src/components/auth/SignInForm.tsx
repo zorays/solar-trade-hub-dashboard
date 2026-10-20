@@ -1,3 +1,4 @@
+
 import {
   useMemo,
   useState,
@@ -20,9 +21,7 @@ import Label from "../form/Label";
 import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
 
-import {
-  useAuth,
-} from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 import {
   getAuthErrorMessage,
@@ -30,7 +29,27 @@ import {
 } from "../../services/auth.service";
 
 /* =========================================================
-   LOCATION STATE
+   SOLAR TRADE HUB DASHBOARD
+   SIGN IN FORM
+
+   Official branding:
+   public/favicon.png
+
+   Authentication:
+   AuthContext -> auth.service.ts -> api.ts
+
+   Features:
+   - Email/password authentication
+   - Remember Me
+   - Password visibility
+   - Email verification feedback
+   - Login error handling
+   - Backend rate-limit messages
+   - Safe post-login redirect
+========================================================= */
+
+/* =========================================================
+   TYPES
 ========================================================= */
 
 type LocationState = {
@@ -42,12 +61,16 @@ type LocationState = {
   message?: string;
 };
 
+type VerificationNotice = {
+  type: "success" | "error" | null;
+  message: string;
+};
+
 /* =========================================================
-   EMAIL
+   EMAIL VALIDATION
 ========================================================= */
 
-const EMAIL_PATTERN =
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* =========================================================
    EMAIL VERIFICATION MESSAGE
@@ -55,123 +78,85 @@ const EMAIL_PATTERN =
 
 const getVerificationMessage = (
   search: string
-): {
-  type:
-    | "success"
-    | "error"
-    | null;
+): VerificationNotice => {
+  const params = new URLSearchParams(search);
 
-  message: string;
-} => {
-  const params =
-    new URLSearchParams(
-      search
-    );
+  const verified = params.get("emailVerified");
+  const reason = params.get("reason");
 
-  const verified =
-    params.get(
-      "emailVerified"
-    );
-
-  const reason =
-    params.get(
-      "reason"
-    );
-
-  if (
-    verified ===
-    "true"
-  ) {
+  if (verified === "true") {
     return {
-      type:
-        "success",
-
+      type: "success",
       message:
         "Your email has been verified successfully. You can now sign in to your Solar Trade Hub dashboard.",
     };
   }
 
-  if (
-    verified !==
-    "false"
-  ) {
+  if (verified !== "false") {
     return {
-      type:
-        null,
-
-      message:
-        "",
+      type: null,
+      message: "",
     };
   }
 
   if (
-    reason ===
-      "expired" ||
-    reason ===
-      "token_expired"
+    reason === "expired" ||
+    reason === "token_expired"
   ) {
     return {
-      type:
-        "error",
-
+      type: "error",
       message:
         "Your email verification link has expired. Please request a new verification email.",
     };
   }
 
   if (
-    reason ===
-      "invalid" ||
-    reason ===
-      "invalid_token"
+    reason === "invalid" ||
+    reason === "invalid_token"
   ) {
     return {
-      type:
-        "error",
-
+      type: "error",
       message:
         "The email verification link is invalid or has already been used.",
     };
   }
 
   return {
-    type:
-      "error",
-
+    type: "error",
     message:
       "Email verification could not be completed. Please request a new verification email and try again.",
   };
 };
 
 /* =========================================================
-   SAFE REDIRECT
+   SAFE POST-LOGIN REDIRECT
+
+   Only use internal application paths.
+
+   Reject:
+   - External URLs
+   - Protocol-relative URLs
+   - Backslash variants
+   - Control characters
+   - Authentication pages
 ========================================================= */
 
 const getSafeRedirect = (
-  state:
-    | LocationState
-    | null
+  state: LocationState | null
 ): string => {
-  const pathname =
-    state?.from
-      ?.pathname;
-
-  const search =
-    state?.from
-      ?.search ||
-    "";
+  const pathname = state?.from?.pathname;
 
   if (
-    !pathname ||
-    !pathname.startsWith(
-      "/"
-    ) ||
-    pathname.startsWith(
-      "//"
-    )
+    typeof pathname !== "string" ||
+    !pathname.startsWith("/") ||
+    pathname.startsWith("//") ||
+    pathname.includes("\\") ||
+    /[\u0000-\u001F\u007F]/.test(pathname)
   ) {
     return "/";
   }
+
+  const normalizedPath = pathname.toLowerCase();
 
   const authPaths = [
     "/signin",
@@ -184,13 +169,21 @@ const getSafeRedirect = (
   if (
     authPaths.some(
       (path) =>
-        pathname.startsWith(
-          path
-        )
+        normalizedPath === path ||
+        normalizedPath.startsWith(`${path}/`)
     )
   ) {
     return "/";
   }
+
+  const search =
+    typeof state?.from?.search === "string" &&
+    state.from.search.startsWith("?") &&
+    !/[\u0000-\u001F\u007F\\]/.test(
+      state.from.search
+    )
+      ? state.from.search
+      : "";
 
   return `${pathname}${search}`;
 };
@@ -200,104 +193,56 @@ const getSafeRedirect = (
 ========================================================= */
 
 export default function SignInForm() {
-  const navigate =
-    useNavigate();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const location =
-    useLocation();
+  const { login } = useAuth();
 
-  const {
-    login,
-  } =
-    useAuth();
+  /* =======================================================
+     FORM STATE
+  ======================================================= */
 
-  const [
-    showPassword,
-    setShowPassword,
-  ] =
-    useState(
-      false
-    );
+  const [showPassword, setShowPassword] =
+    useState(false);
 
-  const [
-    isChecked,
-    setIsChecked,
-  ] =
-    useState(
-      false
-    );
+  const [isChecked, setIsChecked] =
+    useState(false);
 
-  const [
-    email,
-    setEmail,
-  ] =
-    useState(
-      ""
-    );
+  const [email, setEmail] = useState("");
 
-  const [
-    password,
-    setPassword,
-  ] =
-    useState(
-      ""
-    );
+  const [password, setPassword] =
+    useState("");
 
-  const [
-    isSubmitting,
-    setIsSubmitting,
-  ] =
-    useState(
-      false
-    );
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState(
-      ""
-    );
+  const [errorMessage, setErrorMessage] =
+    useState("");
 
   /* =======================================================
      LOCATION STATE
   ======================================================= */
 
-  const locationState =
-    location.state as
-      | LocationState
-      | null;
+  const locationState = location.state as
+    | LocationState
+    | null;
 
   /* =======================================================
-     EMAIL VERIFICATION STATUS
+     EMAIL VERIFICATION NOTICE
   ======================================================= */
 
-  const verificationNotice =
-    useMemo(
-      () =>
-        getVerificationMessage(
-          location.search
-        ),
-      [
-        location.search,
-      ]
-    );
-
-  /* =======================================================
-     SUCCESS MESSAGE
-  ======================================================= */
+  const verificationNotice = useMemo(
+    () => getVerificationMessage(location.search),
+    [location.search]
+  );
 
   const successMessage =
-    verificationNotice.type ===
-    "success"
+    verificationNotice.type === "success"
       ? verificationNotice.message
-      : locationState
-          ?.message ||
-        "";
+      : locationState?.message || "";
 
   const verificationError =
-    verificationNotice.type ===
-    "error"
+    verificationNotice.type === "error"
       ? verificationNotice.message
       : "";
 
@@ -305,130 +250,93 @@ export default function SignInForm() {
      SUBMIT
   ======================================================= */
 
-  const handleSubmit =
-    async (
-      event: FormEvent<HTMLFormElement>
-    ) => {
-      event.preventDefault();
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>
+  ): Promise<void> => {
+    event.preventDefault();
 
-      if (
-        isSubmitting
-      ) {
-        return;
-      }
+    if (isSubmitting) {
+      return;
+    }
 
+    setErrorMessage("");
+
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
+
+    /* =====================================================
+       VALIDATION
+    ===================================================== */
+
+    if (!normalizedEmail) {
       setErrorMessage(
-        ""
+        "Please enter your email address."
+      );
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setErrorMessage(
+        "Please enter a valid email address."
+      );
+      return;
+    }
+
+    if (!password) {
+      setErrorMessage(
+        "Please enter your password."
+      );
+      return;
+    }
+
+    /* =====================================================
+       LOGIN
+
+       Backend source: dashboard
+
+       Remember Me is passed directly to AuthContext.
+    ===================================================== */
+
+    setIsSubmitting(true);
+
+    try {
+      await login(
+        {
+          email: normalizedEmail,
+          password,
+        },
+        isChecked
       );
 
-      const normalizedEmail =
-        email
-          .trim()
-          .toLowerCase();
+      const destination =
+        getSafeRedirect(locationState);
 
-      /* ===================================================
-         VALIDATION
-      =================================================== */
+      navigate(destination, {
+        replace: true,
+      });
+    } catch (error) {
+      const message = getAuthErrorMessage(error);
 
-      if (
-        !normalizedEmail
-      ) {
-        setErrorMessage(
-          "Please enter your email address."
-        );
-
-        return;
-      }
+      const retryAfter =
+        getAuthRetryAfter(error);
 
       if (
-        !EMAIL_PATTERN.test(
-          normalizedEmail
-        )
+        retryAfter !== null &&
+        retryAfter > 0
       ) {
         setErrorMessage(
-          "Please enter a valid email address."
+          `${message} Please try again in ${retryAfter} second${
+            retryAfter === 1 ? "" : "s"
+          }.`
         );
-
-        return;
+      } else {
+        setErrorMessage(message);
       }
-
-      if (
-        !password
-      ) {
-        setErrorMessage(
-          "Please enter your password."
-        );
-
-        return;
-      }
-
-      /* ===================================================
-         LOGIN
-      =================================================== */
-
-      try {
-        setIsSubmitting(
-          true
-        );
-
-        await login(
-          {
-            email:
-              normalizedEmail,
-
-            password,
-          },
-          isChecked
-        );
-
-        const destination =
-          getSafeRedirect(
-            locationState
-          );
-
-        navigate(
-          destination,
-          {
-            replace:
-              true,
-          }
-        );
-      } catch (
-        error
-      ) {
-        const message =
-          getAuthErrorMessage(
-            error
-          );
-
-        const retryAfter =
-          getAuthRetryAfter(
-            error
-          );
-
-        if (
-          retryAfter !==
-            null &&
-          retryAfter > 0
-        ) {
-          setErrorMessage(
-            `${message} Please try again in ${retryAfter} second${
-              retryAfter === 1
-                ? ""
-                : "s"
-            }.`
-          );
-        } else {
-          setErrorMessage(
-            message
-          );
-        }
-      } finally {
-        setIsSubmitting(
-          false
-        );
-      }
-    };
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   /* =======================================================
      UI
@@ -436,40 +344,35 @@ export default function SignInForm() {
 
   return (
     <div className="w-full">
-      {/* BACK */}
+
+      {/* =================================================
+          BACK LINK
+      ================================================= */}
 
       <Link
         to="/"
         className="mb-8 inline-flex items-center gap-2 text-sm text-gray-500 transition hover:text-[#ff4b1f] dark:text-gray-400"
       >
         <ChevronLeftIcon className="size-5" />
-
         Back to dashboard
       </Link>
 
-      {/* BRAND */}
+      {/* =================================================
+          OFFICIAL SOLAR TRADE HUB BRAND
+      ================================================= */}
 
       <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ff4b1f]">
-          <svg
-            viewBox="0 0 40 40"
-            className="h-5 w-5"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 8H24L32 16L23 25L16 18L22 12"
-              stroke="white"
-              strokeWidth="4"
-            />
 
-            <path
-              d="M28 32H16L8 24L17 15L24 22L18 28"
-              stroke="white"
-              strokeWidth="4"
-            />
-          </svg>
+        {/* Official favicon instead of custom SVG */}
+
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-[0_8px_22px_rgba(255,75,31,0.22)]">
+          <img
+            src="/favicon.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-full w-full object-contain"
+          />
         </div>
 
         <div>
@@ -489,7 +392,9 @@ export default function SignInForm() {
         </div>
       </div>
 
-      {/* HEADER */}
+      {/* =================================================
+          HEADER
+      ================================================= */}
 
       <div className="mb-6">
         <div className="mb-2 flex items-center gap-2">
@@ -509,10 +414,16 @@ export default function SignInForm() {
         </p>
       </div>
 
-      {/* TABS */}
+      {/* =================================================
+          SIGN IN / SIGN UP TABS
+      ================================================= */}
 
       <div className="mb-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1 dark:bg-white/[0.05]">
-        <div className="flex h-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-[#ff4b1f] shadow-sm dark:bg-white/[0.08]">
+
+        <div
+          className="flex h-10 items-center justify-center rounded-lg bg-white text-sm font-semibold text-[#ff4b1f] shadow-sm dark:bg-white/[0.08]"
+          aria-current="page"
+        >
           Sign In
         </div>
 
@@ -524,7 +435,9 @@ export default function SignInForm() {
         </Link>
       </div>
 
-      {/* SUCCESS */}
+      {/* =================================================
+          SUCCESS NOTICE
+      ================================================= */}
 
       {successMessage && (
         <div
@@ -535,19 +448,22 @@ export default function SignInForm() {
         </div>
       )}
 
-      {/* VERIFICATION ERROR */}
+      {/* =================================================
+          VERIFICATION ERROR
+      ================================================= */}
 
-      {!errorMessage &&
-        verificationError && (
-          <div
-            role="alert"
-            className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
-          >
-            {verificationError}
-          </div>
-        )}
+      {!errorMessage && verificationError && (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+        >
+          {verificationError}
+        </div>
+      )}
 
-      {/* LOGIN ERROR */}
+      {/* =================================================
+          LOGIN ERROR
+      ================================================= */}
 
       {errorMessage && (
         <div
@@ -558,19 +474,17 @@ export default function SignInForm() {
         </div>
       )}
 
-      {/* FORM */}
+      {/* =================================================
+          LOGIN FORM
+      ================================================= */}
 
-      <form
-        onSubmit={
-          handleSubmit
-        }
-        noValidate
-      >
+      <form onSubmit={handleSubmit} noValidate>
         <div className="space-y-4">
+
           {/* EMAIL */}
 
           <div>
-            <Label>
+            <Label htmlFor="email">
               Email
               <span className="text-error-500">
                 *
@@ -583,32 +497,21 @@ export default function SignInForm() {
               name="email"
               placeholder="Enter your email"
               value={email}
-              onChange={(
-                event
-              ) => {
-                setEmail(
-                  event.target
-                    .value
-                );
+              onChange={(event) => {
+                setEmail(event.target.value);
 
-                if (
-                  errorMessage
-                ) {
-                  setErrorMessage(
-                    ""
-                  );
+                if (errorMessage) {
+                  setErrorMessage("");
                 }
               }}
-              disabled={
-                isSubmitting
-              }
+              disabled={isSubmitting}
             />
           </div>
 
           {/* PASSWORD */}
 
           <div>
-            <Label>
+            <Label htmlFor="password">
               Password
               <span className="text-error-500">
                 *
@@ -625,49 +528,32 @@ export default function SignInForm() {
                     : "password"
                 }
                 placeholder="Enter your password"
-                value={
-                  password
-                }
-                onChange={(
-                  event
-                ) => {
-                  setPassword(
-                    event.target
-                      .value
-                  );
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
 
-                  if (
-                    errorMessage
-                  ) {
-                    setErrorMessage(
-                      ""
-                    );
+                  if (errorMessage) {
+                    setErrorMessage("");
                   }
                 }}
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
               />
 
               <button
                 type="button"
                 onClick={() =>
                   setShowPassword(
-                    (
-                      previous
-                    ) =>
-                      !previous
+                    (previous) => !previous
                   )
                 }
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
                 className="absolute right-4 top-1/2 z-30 -translate-y-1/2 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={
                   showPassword
                     ? "Hide password"
                     : "Show password"
                 }
+                aria-pressed={showPassword}
               >
                 {showPassword ? (
                   <EyeIcon className="size-5 fill-gray-500 dark:fill-gray-400" />
@@ -678,17 +564,14 @@ export default function SignInForm() {
             </div>
           </div>
 
-          {/* OPTIONS */}
+          {/* REMEMBER ME / PASSWORD RECOVERY */}
 
           <div className="flex items-center justify-between gap-4">
+
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={
-                  isChecked
-                }
-                onChange={
-                  setIsChecked
-                }
+                checked={isChecked}
+                onChange={setIsChecked}
               />
 
               <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -708,25 +591,25 @@ export default function SignInForm() {
 
           <button
             type="submit"
-            disabled={
-              isSubmitting
-            }
+            disabled={isSubmitting}
             className="flex h-11 w-full items-center justify-center rounded-xl bg-[#ff4b1f] text-sm font-semibold text-white transition hover:bg-[#e83c12] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <span className="flex items-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-
                 Signing In...
               </span>
             ) : (
               "Sign In"
             )}
           </button>
+
         </div>
       </form>
 
-      {/* SIGN UP */}
+      {/* =================================================
+          SIGN UP LINK
+      ================================================= */}
 
       <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
         Don&apos;t have an account?{" "}
@@ -738,6 +621,7 @@ export default function SignInForm() {
           Create Account
         </Link>
       </p>
+
     </div>
   );
 }

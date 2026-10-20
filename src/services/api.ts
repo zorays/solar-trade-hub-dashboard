@@ -1,3 +1,4 @@
+
 import axios, {
   AxiosError,
   AxiosHeaders,
@@ -12,38 +13,23 @@ import axios, {
    API CONFIGURATION
 ========================================================= */
 
-const normalizeBaseUrl = (
-  value: string
-): string => {
-  return value
-    .trim()
-    .replace(
-      /\/+$/,
-      ""
-    );
-};
+const normalizeBaseUrl = (value: string): string =>
+  value.trim().replace(/\/+$/, "");
 
-const API_BASE_URL =
-  normalizeBaseUrl(
-    import.meta.env.VITE_API_BASE_URL?.trim() ||
-      "http://localhost:5000/api/v1"
-  );
+const API_BASE_URL = normalizeBaseUrl(
+  import.meta.env.VITE_API_BASE_URL?.trim() ||
+    "http://localhost:5000/api/v1"
+);
 
-const API_TIMEOUT =
-  60_000;
+const API_TIMEOUT = 60_000;
 
 /* =========================================================
    STORAGE KEYS
 ========================================================= */
 
-const ACCESS_TOKEN_KEY =
-  "accessToken";
-
-const REFRESH_TOKEN_KEY =
-  "refreshToken";
-
-const AUTH_USER_KEY =
-  "authUser";
+const ACCESS_TOKEN_KEY = "accessToken";
+const REFRESH_TOKEN_KEY = "refreshToken";
+const AUTH_USER_KEY = "authUser";
 
 /* =========================================================
    TYPES
@@ -57,29 +43,18 @@ type RetryRequestConfig =
 type RefreshTokenData = {
   accessToken: string;
   refreshToken: string;
-
-  /*
-   * Backend refresh response also returns the current user.
-   *
-   * Keeping this as unknown avoids importing auth.service.ts
-   * here and creating a circular dependency.
-   */
   user?: unknown;
 };
 
 type RefreshTokenResponse = {
   success?: boolean;
   message?: string;
-
   accessToken?: string;
   refreshToken?: string;
-
   user?: unknown;
-
   data?: {
     accessToken?: string;
     refreshToken?: string;
-
     user?: unknown;
   };
 };
@@ -88,87 +63,57 @@ type RefreshTokenResponse = {
    BROWSER CHECK
 ========================================================= */
 
-const isBrowser = (): boolean => {
+const isBrowser = (): boolean =>
+  typeof window !== "undefined" &&
+  typeof localStorage !== "undefined" &&
+  typeof sessionStorage !== "undefined";
+
+/* =========================================================
+   GET STORED TOKENS
+========================================================= */
+
+export const getAccessToken = (): string | null => {
+  if (!isBrowser()) return null;
+
   return (
-    typeof window !==
-      "undefined" &&
-    typeof localStorage !==
-      "undefined" &&
-    typeof sessionStorage !==
-      "undefined"
+    localStorage.getItem(ACCESS_TOKEN_KEY) ||
+    sessionStorage.getItem(ACCESS_TOKEN_KEY)
+  );
+};
+
+export const getRefreshToken = (): string | null => {
+  if (!isBrowser()) return null;
+
+  return (
+    localStorage.getItem(REFRESH_TOKEN_KEY) ||
+    sessionStorage.getItem(REFRESH_TOKEN_KEY)
   );
 };
 
 /* =========================================================
-   TOKEN STORAGE
+   REMEMBER ME
 ========================================================= */
 
-export const getAccessToken =
-  (): string | null => {
-    if (
-      !isBrowser()
-    ) {
-      return null;
-    }
+const isRememberedLogin = (): boolean => {
+  if (!isBrowser()) return false;
 
-    return (
-      localStorage.getItem(
-        ACCESS_TOKEN_KEY
-      ) ||
-      sessionStorage.getItem(
-        ACCESS_TOKEN_KEY
-      )
-    );
-  };
-
-export const getRefreshToken =
-  (): string | null => {
-    if (
-      !isBrowser()
-    ) {
-      return null;
-    }
-
-    return (
-      localStorage.getItem(
-        REFRESH_TOKEN_KEY
-      ) ||
-      sessionStorage.getItem(
-        REFRESH_TOKEN_KEY
-      )
-    );
-  };
+  return Boolean(
+    localStorage.getItem(ACCESS_TOKEN_KEY) ||
+      localStorage.getItem(REFRESH_TOKEN_KEY)
+  );
+};
 
 /* =========================================================
-   REMEMBER-ME STORAGE MODE
+   SESSION VERSION
 
-   localStorage:
-   remembered session
-
-   sessionStorage:
-   current browser-tab/session only
+   Prevents an old refresh request from restoring tokens
+   after logout, login or another session replacement.
 ========================================================= */
 
-const isRememberedLogin =
-  (): boolean => {
-    if (
-      !isBrowser()
-    ) {
-      return false;
-    }
-
-    return Boolean(
-      localStorage.getItem(
-        ACCESS_TOKEN_KEY
-      ) ||
-      localStorage.getItem(
-        REFRESH_TOKEN_KEY
-      )
-    );
-  };
+let sessionEpoch = 0;
 
 /* =========================================================
-   SET AUTH TOKENS
+   SAVE TOKENS
 ========================================================= */
 
 export const setAuthTokens = (
@@ -176,51 +121,26 @@ export const setAuthTokens = (
   refreshToken: string,
   rememberMe = false
 ): void => {
-  if (
-    !isBrowser()
-  ) {
-    return;
+  if (!isBrowser()) return;
+
+  const normalizedAccessToken = accessToken.trim();
+  const normalizedRefreshToken = refreshToken.trim();
+
+  if (!normalizedAccessToken || !normalizedRefreshToken) {
+    throw new Error("Authentication tokens are invalid.");
   }
 
-  const normalizedAccessToken =
-    accessToken.trim();
+  sessionEpoch += 1;
 
-  const normalizedRefreshToken =
-    refreshToken.trim();
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 
-  if (
-    !normalizedAccessToken ||
-    !normalizedRefreshToken
-  ) {
-    throw new Error(
-      "Authentication tokens are invalid."
-    );
-  }
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
 
-  /*
-   * A session must never be split between localStorage and
-   * sessionStorage.
-   */
-  localStorage.removeItem(
-    ACCESS_TOKEN_KEY
-  );
-
-  localStorage.removeItem(
-    REFRESH_TOKEN_KEY
-  );
-
-  sessionStorage.removeItem(
-    ACCESS_TOKEN_KEY
-  );
-
-  sessionStorage.removeItem(
-    REFRESH_TOKEN_KEY
-  );
-
-  const storage =
-    rememberMe
-      ? localStorage
-      : sessionStorage;
+  const storage = rememberMe
+    ? localStorage
+    : sessionStorage;
 
   storage.setItem(
     ACCESS_TOKEN_KEY,
@@ -234,18 +154,44 @@ export const setAuthTokens = (
 };
 
 /* =========================================================
-   UPDATE STORED USER AFTER TOKEN REFRESH
+   VALIDATE REFRESHED USER SNAPSHOT
 
-   Refresh-token response contains current database-backed:
+   Do not cache an unexpected customer or malformed user.
 
-   role
-   permissions
-   status
-   verification state
-   profile data
+   The backend /auth/profile remains authoritative.
+========================================================= */
 
-   Store this so dashboard UI does not continue using stale
-   RBAC information after a successful token refresh.
+const isDashboardUserSnapshot = (
+  value: unknown
+): value is Record<string, unknown> => {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+
+  const user = value as Record<string, unknown>;
+  const id = user._id ?? user.id;
+
+  return (
+    user.accountType === "dashboard" &&
+    typeof id === "string" &&
+    id.trim().length > 0 &&
+    typeof user.name === "string" &&
+    user.name.trim().length > 0 &&
+    typeof user.email === "string" &&
+    user.email.trim().length > 0 &&
+    user.status === "active" &&
+    user.isVerified === true &&
+    typeof user.role === "string" &&
+    user.role.trim().length > 0
+  );
+};
+
+/* =========================================================
+   UPDATE CACHED USER AFTER REFRESH
 ========================================================= */
 
 const setStoredAuthUser = (
@@ -254,31 +200,21 @@ const setStoredAuthUser = (
 ): void => {
   if (
     !isBrowser() ||
-    !user ||
-    typeof user !==
-      "object"
+    !isDashboardUserSnapshot(user)
   ) {
     return;
   }
 
-  localStorage.removeItem(
-    AUTH_USER_KEY
-  );
+  localStorage.removeItem(AUTH_USER_KEY);
+  sessionStorage.removeItem(AUTH_USER_KEY);
 
-  sessionStorage.removeItem(
-    AUTH_USER_KEY
-  );
-
-  const storage =
-    rememberMe
-      ? localStorage
-      : sessionStorage;
+  const storage = rememberMe
+    ? localStorage
+    : sessionStorage;
 
   storage.setItem(
     AUTH_USER_KEY,
-    JSON.stringify(
-      user
-    )
+    JSON.stringify(user)
   );
 };
 
@@ -286,284 +222,134 @@ const setStoredAuthUser = (
    CLEAR AUTH STORAGE
 ========================================================= */
 
-export const clearAuthStorage =
-  (): void => {
-    if (
-      !isBrowser()
-    ) {
-      return;
-    }
+export const clearAuthStorage = (): void => {
+  sessionEpoch += 1;
 
-    localStorage.removeItem(
-      ACCESS_TOKEN_KEY
-    );
+  if (!isBrowser()) return;
 
-    localStorage.removeItem(
-      REFRESH_TOKEN_KEY
-    );
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
 
-    localStorage.removeItem(
-      AUTH_USER_KEY
-    );
-
-    sessionStorage.removeItem(
-      ACCESS_TOKEN_KEY
-    );
-
-    sessionStorage.removeItem(
-      REFRESH_TOKEN_KEY
-    );
-
-    sessionStorage.removeItem(
-      AUTH_USER_KEY
-    );
-  };
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_USER_KEY);
+};
 
 /* =========================================================
-   REDIRECT TO SIGN IN
+   AUTH PAGE REDIRECT
 ========================================================= */
 
 const isPublicAuthPage = (
   pathname: string
-): boolean => {
-  return (
-    pathname ===
-      "/signin" ||
-    pathname ===
-      "/signup" ||
-    pathname.startsWith(
-      "/forgot-password"
-    ) ||
-    pathname.startsWith(
-      "/reset-password"
-    ) ||
-    pathname.startsWith(
-      "/verify-email"
-    )
-  );
+): boolean =>
+  pathname === "/signin" ||
+  pathname === "/signup" ||
+  pathname.startsWith("/forgot-password") ||
+  pathname.startsWith("/reset-password") ||
+  pathname.startsWith("/verify-email");
+
+const redirectToSignIn = (): void => {
+  if (!isBrowser()) return;
+
+  if (
+    isPublicAuthPage(window.location.pathname)
+  ) {
+    return;
+  }
+
+  window.location.replace("/signin");
 };
-
-const redirectToSignIn =
-  (): void => {
-    if (
-      !isBrowser()
-    ) {
-      return;
-    }
-
-    const currentPath =
-      window.location.pathname;
-
-    if (
-      isPublicAuthPage(
-        currentPath
-      )
-    ) {
-      return;
-    }
-
-    window.location.replace(
-      "/signin"
-    );
-  };
 
 /* =========================================================
    PUBLIC AUTH REQUESTS
 
-   These requests should NOT receive an old/stale access
-   token from browser storage.
+   These requests must not inherit a stale bearer token.
 ========================================================= */
 
 const isPublicAuthenticationRequest = (
   requestUrl = ""
-): boolean => {
-  return (
-    requestUrl.includes(
-      "/auth/login"
-    ) ||
-    requestUrl.includes(
-      "/auth/register"
-    ) ||
-    requestUrl.includes(
-      "/auth/refresh-token"
-    ) ||
-    requestUrl.includes(
-      "/auth/forgot-password"
-    ) ||
-    requestUrl.includes(
-      "/auth/reset-password/"
-    ) ||
-    requestUrl.includes(
-      "/auth/verify-email/"
-    ) ||
-    requestUrl.includes(
-      "/auth/resend-verification-email"
-    ) ||
-    requestUrl.includes(
-      "/auth/send-phone-otp"
-    ) ||
-    requestUrl.includes(
-      "/auth/verify-phone-otp"
-    )
-  );
-};
+): boolean =>
+  requestUrl.includes("/auth/login") ||
+  requestUrl.includes("/auth/register") ||
+  requestUrl.includes("/auth/refresh-token") ||
+  requestUrl.includes("/auth/forgot-password") ||
+  requestUrl.includes("/auth/reset-password/") ||
+  requestUrl.includes("/auth/verify-email/") ||
+  requestUrl.includes(
+    "/auth/resend-verification-email"
+  ) ||
+  requestUrl.includes("/auth/send-phone-otp") ||
+  requestUrl.includes("/auth/verify-phone-otp");
 
 /* =========================================================
-   DO NOT AUTO-REFRESH THESE REQUESTS
-
-   Authentication failures on these endpoints are part of
-   their normal workflow and must not trigger refresh logic.
+   REQUESTS EXCLUDED FROM AUTOMATIC REFRESH
 ========================================================= */
 
 const isRefreshExcludedRequest = (
   requestUrl = ""
-): boolean => {
-  return (
-    requestUrl.includes(
-      "/auth/login"
-    ) ||
-    requestUrl.includes(
-      "/auth/register"
-    ) ||
-    requestUrl.includes(
-      "/auth/refresh-token"
-    ) ||
-    requestUrl.includes(
-      "/auth/forgot-password"
-    ) ||
-    requestUrl.includes(
-      "/auth/reset-password/"
-    ) ||
-    requestUrl.includes(
-      "/auth/verify-email/"
-    ) ||
-    requestUrl.includes(
-      "/auth/resend-verification-email"
-    )
+): boolean =>
+  requestUrl.includes("/auth/login") ||
+  requestUrl.includes("/auth/register") ||
+  requestUrl.includes("/auth/refresh-token") ||
+  requestUrl.includes("/auth/forgot-password") ||
+  requestUrl.includes("/auth/reset-password/") ||
+  requestUrl.includes("/auth/verify-email/") ||
+  requestUrl.includes(
+    "/auth/resend-verification-email"
   );
-};
 
 /* =========================================================
    AXIOS INSTANCE
-
-   Content-Type is intentionally not globally forced.
-
-   JSON:
-   Axios sets application/json.
-
-   FormData:
-   browser sets multipart boundary automatically.
 ========================================================= */
 
-const api =
-  axios.create({
-    baseURL:
-      API_BASE_URL,
-
-    timeout:
-      API_TIMEOUT,
-
-    withCredentials:
-      true,
-
-    headers: {
-      Accept:
-        "application/json",
-    },
-  });
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: API_TIMEOUT,
+  withCredentials: true,
+  headers: {
+    Accept: "application/json",
+  },
+});
 
 /* =========================================================
    REQUEST INTERCEPTOR
 ========================================================= */
 
 api.interceptors.request.use(
-  (
-    config:
-      InternalAxiosRequestConfig
-  ) => {
-    const requestUrl =
-      config.url ||
-      "";
-
-    const accessToken =
-      getAccessToken();
-
-    /* =====================================================
-       BEARER TOKEN
-
-       Public authentication calls must not inherit a stale
-       dashboard access token.
-    ===================================================== */
+  (config: InternalAxiosRequestConfig) => {
+    const accessToken = getAccessToken();
+    const requestUrl = config.url || "";
 
     if (
       accessToken &&
-      !isPublicAuthenticationRequest(
-        requestUrl
-      )
+      !isPublicAuthenticationRequest(requestUrl)
     ) {
-      if (
-        !config.headers
-      ) {
-        config.headers =
-          new AxiosHeaders();
-      }
-
       config.headers.set(
         "Authorization",
         `Bearer ${accessToken}`
       );
-    } else if (
-      config.headers
-    ) {
-      config.headers.delete(
-        "Authorization"
-      );
+    } else {
+      config.headers.delete("Authorization");
     }
 
-    /* =====================================================
-       FORM DATA
-
-       Never manually supply multipart Content-Type because
-       browser must generate its boundary.
-    ===================================================== */
-
+    /* Browser must generate FormData boundary. */
     if (
-      typeof FormData !==
-        "undefined" &&
-      config.data instanceof
-        FormData
+      typeof FormData !== "undefined" &&
+      config.data instanceof FormData
     ) {
-      config.headers.delete(
-        "Content-Type"
-      );
+      config.headers.delete("Content-Type");
     }
 
     return config;
   },
-
-  (
-    error: AxiosError
-  ) => {
-    return Promise.reject(
-      error
-    );
-  }
+  (error: AxiosError) => Promise.reject(error)
 );
 
 /* =========================================================
-   REFRESH REQUEST LOCK
+   REFRESH LOCK
 
-   Example:
-
-   Five dashboard requests expire simultaneously.
-
-   Wrong:
-   5 refresh requests
-   → refresh-token rotation conflicts
-
-   Correct:
-   1 refresh request
-   → all failed requests await same Promise
+   Only one refresh request runs at a time within a tab.
 ========================================================= */
 
 let refreshRequest:
@@ -572,246 +358,226 @@ let refreshRequest:
 
 /* =========================================================
    REQUEST NEW TOKENS
+
+   Raw Axios avoids recursive interceptor execution.
 ========================================================= */
 
-const requestNewTokens =
-  async (): Promise<RefreshTokenData> => {
-    const refreshToken =
-      getRefreshToken();
-
-    if (
-      !refreshToken
-    ) {
-      throw new Error(
-        "Refresh token is missing."
-      );
-    }
-
-    /*
-     * Raw axios is intentional.
-     *
-     * Using the `api` instance here would allow the refresh
-     * request to enter its own response interceptor.
-     */
-    const response =
-      await axios.post<RefreshTokenResponse>(
-        `${API_BASE_URL}/auth/refresh-token`,
-
-        {
-          refreshToken,
+const requestNewTokens = async (
+  refreshToken: string
+): Promise<RefreshTokenData> => {
+  const response =
+    await axios.post<RefreshTokenResponse>(
+      `${API_BASE_URL}/auth/refresh-token`,
+      {
+        refreshToken,
+      },
+      {
+        timeout: API_TIMEOUT,
+        withCredentials: true,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
         },
+      }
+    );
 
-        {
-          timeout:
-            API_TIMEOUT,
+  const body = response.data;
 
-          withCredentials:
-            true,
+  const data =
+    body?.data &&
+    typeof body.data === "object"
+      ? body.data
+      : body;
 
-          headers: {
-            Accept:
-              "application/json",
+  const accessToken =
+    typeof data?.accessToken === "string"
+      ? data.accessToken.trim()
+      : "";
 
-            "Content-Type":
-              "application/json",
-          },
-        }
-      );
+  const newRefreshToken =
+    typeof data?.refreshToken === "string"
+      ? data.refreshToken.trim()
+      : "";
 
-    const responseBody =
-      response.data;
+  if (!accessToken) {
+    throw new Error(
+      "Access token was not returned by the server."
+    );
+  }
 
-    const tokenData =
-      responseBody?.data &&
-      typeof responseBody.data ===
-        "object"
-        ? responseBody.data
-        : responseBody;
+  if (!newRefreshToken) {
+    throw new Error(
+      "Refresh token was not returned by the server."
+    );
+  }
 
-    const newAccessToken =
-      typeof tokenData
-        ?.accessToken ===
-      "string"
-        ? tokenData.accessToken.trim()
-        : "";
-
-    const newRefreshToken =
-      typeof tokenData
-        ?.refreshToken ===
-      "string"
-        ? tokenData.refreshToken.trim()
-        : "";
-
-    if (
-      !newAccessToken
-    ) {
-      throw new Error(
-        "Access token was not returned by the server."
-      );
-    }
-
-    /*
-     * Solar Trade Hub backend rotates refresh tokens.
-     *
-     * Do not silently reuse the old refresh token if the
-     * backend failed to return the newly rotated token.
-     */
-    if (
-      !newRefreshToken
-    ) {
-      throw new Error(
-        "Refresh token was not returned by the server."
-      );
-    }
-
-    return {
-      accessToken:
-        newAccessToken,
-
-      refreshToken:
-        newRefreshToken,
-
-      user:
-        tokenData?.user,
-    };
+  return {
+    accessToken,
+    refreshToken: newRefreshToken,
+    user: data?.user,
   };
+};
+
+/* =========================================================
+   REFRESH SESSION
+
+   Save rotated tokens exactly once.
+
+   A changed session cannot be overwritten by an old
+   asynchronous refresh response.
+========================================================= */
+
+const SESSION_CHANGED =
+  "Authentication session changed during token refresh.";
+
+const refreshSession = (
+  currentRefreshToken: string
+): Promise<RefreshTokenData> => {
+  if (refreshRequest) {
+    return refreshRequest;
+  }
+
+  const startingEpoch = sessionEpoch;
+  const rememberMe = isRememberedLogin();
+
+  const pending = (async (): Promise<RefreshTokenData> => {
+    const tokenData = await requestNewTokens(
+      currentRefreshToken
+    );
+
+    if (
+      sessionEpoch !== startingEpoch ||
+      getRefreshToken() !== currentRefreshToken
+    ) {
+      throw new Error(SESSION_CHANGED);
+    }
+
+    setAuthTokens(
+      tokenData.accessToken,
+      tokenData.refreshToken,
+      rememberMe
+    );
+
+    if (tokenData.user) {
+      setStoredAuthUser(
+        tokenData.user,
+        rememberMe
+      );
+    }
+
+    return tokenData;
+  })();
+
+  refreshRequest = pending;
+
+  void pending
+    .finally(() => {
+      if (refreshRequest === pending) {
+        refreshRequest = null;
+      }
+    })
+    .catch(() => {
+      /* Waiting requests handle the refresh error. */
+    });
+
+  return pending;
+};
 
 /* =========================================================
    RESPONSE INTERCEPTOR
 ========================================================= */
 
 api.interceptors.response.use(
-  (
-    response
-  ) => {
-    return response;
-  },
+  (response) => response,
 
-  async (
-    error: AxiosError
-  ) => {
+  async (error: AxiosError) => {
     const originalRequest =
       error.config as
         | RetryRequestConfig
         | undefined;
 
-    if (
-      !originalRequest
-    ) {
-      return Promise.reject(
-        error
-      );
+    if (!originalRequest) {
+      return Promise.reject(error);
     }
 
     const requestUrl =
-      originalRequest.url ||
-      "";
+      originalRequest.url || "";
+
+    const shouldRefresh =
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isRefreshExcludedRequest(requestUrl);
+
+    if (!shouldRefresh) {
+      return Promise.reject(error);
+    }
 
     /* =====================================================
-       TOKEN REFRESH CONDITIONS
+       ANOTHER REQUEST ALREADY REFRESHED THE TOKEN
 
-       Refresh only when:
-
-       - backend returned 401
-       - request has not already been retried
-       - endpoint is not public auth/refresh
+       Retry with the latest access token instead of
+       rotating the refresh token again.
     ===================================================== */
 
-    const shouldRefreshToken =
-      error.response?.status ===
-        401 &&
-      !originalRequest._retry &&
-      !isRefreshExcludedRequest(
-        requestUrl
+    const tokenUsed =
+      originalRequest.headers?.get(
+        "Authorization"
       );
 
+    const currentAccessToken =
+      getAccessToken();
+
     if (
-      !shouldRefreshToken
+      typeof tokenUsed === "string" &&
+      currentAccessToken &&
+      tokenUsed !==
+        `Bearer ${currentAccessToken}`
     ) {
-      return Promise.reject(
-        error
-      );
+      originalRequest._retry = true;
+
+      return api(originalRequest);
     }
 
     /* =====================================================
        NO REFRESH TOKEN
-
-       Session cannot be recovered.
     ===================================================== */
 
-    if (
-      !getRefreshToken()
-    ) {
-      clearAuthStorage();
+    const refreshToken =
+      getRefreshToken();
 
-      redirectToSignIn();
+    if (!refreshToken) {
+      if (
+        !currentAccessToken ||
+        tokenUsed ===
+          `Bearer ${currentAccessToken}`
+      ) {
+        clearAuthStorage();
+        redirectToSignIn();
+      }
 
-      return Promise.reject(
-        error
-      );
+      return Promise.reject(error);
     }
 
-    originalRequest._retry =
-      true;
+    originalRequest._retry = true;
+
+    const startingEpoch =
+      sessionEpoch;
 
     /* =====================================================
-       REFRESH SESSION
+       REFRESH AND RETRY
     ===================================================== */
 
     try {
+      const { accessToken } =
+        await refreshSession(refreshToken);
+
       if (
-        !refreshRequest
+        getAccessToken() !== accessToken
       ) {
-        refreshRequest =
-          requestNewTokens()
-            .finally(
-              () => {
-                refreshRequest =
-                  null;
-              }
-            );
+        throw new Error(SESSION_CHANGED);
       }
 
-      const {
-        accessToken,
-        refreshToken,
-        user,
-      } =
-        await refreshRequest;
-
-      const rememberMe =
-        isRememberedLogin();
-
-      /* ===================================================
-         SAVE ROTATED TOKENS
-      =================================================== */
-
-      setAuthTokens(
-        accessToken,
-        refreshToken,
-        rememberMe
-      );
-
-      /* ===================================================
-         SAVE FRESH USER / RBAC STATE
-      =================================================== */
-
-      if (
-        user
-      ) {
-        setStoredAuthUser(
-          user,
-          rememberMe
-        );
-      }
-
-      /* ===================================================
-         RETRY ORIGINAL REQUEST
-      =================================================== */
-
-      if (
-        !originalRequest.headers
-      ) {
+      if (!originalRequest.headers) {
         originalRequest.headers =
           new AxiosHeaders();
       }
@@ -821,24 +587,18 @@ api.interceptors.response.use(
         `Bearer ${accessToken}`
       );
 
-      /*
-       * Retry exactly once.
-       *
-       * _retry prevents an infinite 401 → refresh loop.
-       */
-      return api(
-        originalRequest
-      );
-    } catch (
-      refreshError
-    ) {
-      /*
-       * Refresh failure means the dashboard session is no
-       * longer recoverable.
-       */
-      clearAuthStorage();
-
-      redirectToSignIn();
+      return api(originalRequest);
+    } catch (refreshError) {
+      /* Do not erase a newer login or logout. */
+      if (
+        getRefreshToken() ===
+          refreshToken &&
+        sessionEpoch ===
+          startingEpoch
+      ) {
+        clearAuthStorage();
+        redirectToSignIn();
+      }
 
       return Promise.reject(
         refreshError

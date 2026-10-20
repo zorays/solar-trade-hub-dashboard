@@ -1,6 +1,5 @@
-import {
-  useState,
-} from "react";
+
+import { useState } from "react";
 
 import {
   Navigate,
@@ -9,12 +8,27 @@ import {
   useNavigate,
 } from "react-router";
 
-import {
-  useAuth,
-} from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 /* =========================================================
-   ACCESS RESTRICTION
+   SOLAR TRADE HUB DASHBOARD
+   PROTECTED ROUTE
+
+   Responsibilities:
+   - Authentication validation
+   - Dashboard account restriction
+   - Active account requirement
+   - Email verification requirement
+   - Assigned role validation
+   - Active custom role validation
+
+   Module permissions are handled by PermissionRoute.
+
+   Backend authorization remains authoritative.
+========================================================= */
+
+/* =========================================================
+   ACCESS RESTRICTION TYPES
 ========================================================= */
 
 type AccessRestrictionProps = {
@@ -22,56 +36,62 @@ type AccessRestrictionProps = {
   message: string;
 };
 
+/* =========================================================
+   ACCESS RESTRICTION SCREEN
+========================================================= */
+
 function AccessRestriction({
   title,
   message,
 }: AccessRestrictionProps) {
-  const navigate =
-    useNavigate();
+  const navigate = useNavigate();
 
-  const {
-    logout,
-  } =
-    useAuth();
+  const { logout } = useAuth();
 
-  const [
-    isSigningOut,
-    setIsSigningOut,
-  ] =
+  const [isSigningOut, setIsSigningOut] =
     useState(false);
 
   /* =======================================================
-     SIGN OUT
+     SAFE LOGOUT
+
+     AuthContext clears the local session even if the
+     backend logout request fails.
+
+     Catch errors here so the click handler cannot create
+     an unhandled Promise rejection.
   ======================================================= */
 
-  const handleLogout =
-    async () => {
-      if (
-        isSigningOut
-      ) {
-        return;
-      }
+  const handleLogout = async (): Promise<void> => {
+    if (isSigningOut) {
+      return;
+    }
 
-      try {
-        setIsSigningOut(
-          true
-        );
+    setIsSigningOut(true);
 
-        await logout();
-      } finally {
-        navigate(
-          "/signin",
-          {
-            replace:
-              true,
-          }
-        );
-      }
-    };
+    try {
+      await logout();
+    } catch (error) {
+      /*
+       * The local session is already cleared by
+       * AuthContext.logout() in its finally block.
+       *
+       * Avoid exposing internal API error details.
+       */
+      console.warn(
+        "Dashboard sign-out request failed; local session was cleared.",
+        error
+      );
+    } finally {
+      navigate("/signin", {
+        replace: true,
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
       <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-8">
+
         {/* =================================================
             BRAND
         ================================================= */}
@@ -141,7 +161,7 @@ function AccessRestriction({
         </p>
 
         {/* =================================================
-            ACTION
+            SIGN OUT ACTION
         ================================================= */}
 
         <div className="mt-6">
@@ -150,9 +170,7 @@ function AccessRestriction({
             onClick={() => {
               void handleLogout();
             }}
-            disabled={
-              isSigningOut
-            }
+            disabled={isSigningOut}
             className="inline-flex h-11 items-center justify-center rounded-xl bg-[#ff4b1f] px-5 text-sm font-semibold text-white transition hover:bg-[#e83c12] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSigningOut
@@ -166,13 +184,14 @@ function AccessRestriction({
 }
 
 /* =========================================================
-   AUTH LOADING SCREEN
+   AUTHENTICATION LOADING SCREEN
 ========================================================= */
 
 function AuthenticationLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
       <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+
         <div className="flex items-center gap-3">
           <span className="size-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#ff4b1f] dark:border-gray-700 dark:border-t-[#5b2eff]" />
 
@@ -186,6 +205,7 @@ function AuthenticationLoader() {
             </p>
           </div>
         </div>
+
       </div>
     </div>
   );
@@ -193,65 +213,45 @@ function AuthenticationLoader() {
 
 /* =========================================================
    PROTECTED DASHBOARD ROUTE
-
-   Access requires:
-
-   - authenticated session
-   - dashboard account
-   - active account
-   - verified email
-   - assigned dashboard role
-   - active custom role when applicable
-
-   Module/page permissions are handled separately by
-   PermissionRoute.
 ========================================================= */
 
 export default function ProtectedRoute() {
-  const location =
-    useLocation();
+  const location = useLocation();
 
   const {
     user,
     isLoading,
     isAuthenticated,
-  } =
-    useAuth();
+  } = useAuth();
 
   /* =======================================================
      INITIAL AUTH CHECK
+
+     AuthContext verifies saved sessions with the backend.
+
+     Do not render protected content during initialization.
   ======================================================= */
 
-  if (
-    isLoading
-  ) {
-    return (
-      <AuthenticationLoader />
-    );
+  if (isLoading) {
+    return <AuthenticationLoader />;
   }
 
   /* =======================================================
      NOT AUTHENTICATED
 
-     Preserve requested route so Sign In can redirect the
-     user back to it after successful authentication.
+     Preserve the originally requested route so SignInForm
+     can navigate there after successful authentication.
   ======================================================= */
 
-  if (
-    !isAuthenticated ||
-    !user
-  ) {
+  if (!isAuthenticated || !user) {
     return (
       <Navigate
         to="/signin"
         replace
         state={{
           from: {
-            pathname:
-              location.pathname,
-
-            search:
-              location.search,
+            pathname: location.pathname,
+            search: location.search,
           },
         }}
       />
@@ -261,14 +261,10 @@ export default function ProtectedRoute() {
   /* =======================================================
      ACCOUNT TYPE
 
-     Storefront customer sessions must never be accepted by
-     the Dashboard application.
+     Storefront customer accounts cannot access Dashboard.
   ======================================================= */
 
-  if (
-    user.accountType !==
-    "dashboard"
-  ) {
+  if (user.accountType !== "dashboard") {
     return (
       <AccessRestriction
         title="Dashboard Access Required"
@@ -281,10 +277,7 @@ export default function ProtectedRoute() {
      ACCOUNT STATUS
   ======================================================= */
 
-  if (
-    user.status ===
-    "blocked"
-  ) {
+  if (user.status === "blocked") {
     return (
       <AccessRestriction
         title="Account Blocked"
@@ -293,10 +286,7 @@ export default function ProtectedRoute() {
     );
   }
 
-  if (
-    user.status ===
-    "inactive"
-  ) {
+  if (user.status !== "active") {
     return (
       <AccessRestriction
         title="Account Inactive"
@@ -307,18 +297,9 @@ export default function ProtectedRoute() {
 
   /* =======================================================
      EMAIL VERIFICATION
-
-     Normally the backend prevents an unverified Dashboard
-     user from logging in.
-
-     This remains as a defensive frontend check in case old
-     browser state exists.
   ======================================================= */
 
-  if (
-    user.isVerified !==
-    true
-  ) {
+  if (user.isVerified !== true) {
     return (
       <AccessRestriction
         title="Email Verification Required"
@@ -328,30 +309,22 @@ export default function ProtectedRoute() {
   }
 
   /* =======================================================
-     ROLE
+     ROLE NORMALIZATION
   ======================================================= */
 
   const normalizedRole =
-    typeof user.role ===
-      "string"
-      ? user.role
-          .trim()
-          .toLowerCase()
+    typeof user.role === "string"
+      ? user.role.trim().toLowerCase()
       : "";
 
   /* =======================================================
-     INVALID / UNASSIGNED ROLE
-
-     Current backend blocks login for role "user", therefore
-     this is primarily a defensive stale-session check.
+     INVALID OR UNASSIGNED ROLE
   ======================================================= */
 
   if (
     !normalizedRole ||
-    normalizedRole ===
-      "user" ||
-    normalizedRole ===
-      "customer"
+    normalizedRole === "user" ||
+    normalizedRole === "customer"
   ) {
     return (
       <AccessRestriction
@@ -363,32 +336,26 @@ export default function ProtectedRoute() {
 
   /* =======================================================
      SYSTEM ADMINISTRATORS
+
+     Existing backend policy recognizes admin and
+     super_admin as system administrator roles.
+
+     Permission enforcement remains on the backend.
   ======================================================= */
 
   const isSystemAdministrator =
-    normalizedRole ===
-      "admin" ||
-    normalizedRole ===
-      "super_admin";
+    normalizedRole === "admin" ||
+    normalizedRole === "super_admin";
 
-  if (
-    isSystemAdministrator
-  ) {
-    return (
-      <Outlet />
-    );
+  if (isSystemAdministrator) {
+    return <Outlet />;
   }
 
   /* =======================================================
      CUSTOM ROLE DETAILS
-
-     Every non-system dashboard role should resolve to an
-     active Role document.
   ======================================================= */
 
-  if (
-    !user.roleDetails
-  ) {
+  if (!user.roleDetails) {
     return (
       <AccessRestriction
         title="Role Configuration Error"
@@ -398,17 +365,19 @@ export default function ProtectedRoute() {
   }
 
   /* =======================================================
-     ROLE SLUG CONSISTENCY
+     ROLE SLUG VALIDATION
+
+     Safely handle malformed role metadata.
   ======================================================= */
 
   const roleDetailsSlug =
-    user.roleDetails.slug
-      .trim()
-      .toLowerCase();
+    typeof user.roleDetails.slug === "string"
+      ? user.roleDetails.slug.trim().toLowerCase()
+      : "";
 
   if (
-    roleDetailsSlug !==
-    normalizedRole
+    !roleDetailsSlug ||
+    roleDetailsSlug !== normalizedRole
   ) {
     return (
       <AccessRestriction
@@ -422,10 +391,7 @@ export default function ProtectedRoute() {
      CUSTOM ROLE STATUS
   ======================================================= */
 
-  if (
-    user.roleDetails.status !==
-    "active"
-  ) {
+  if (user.roleDetails.status !== "active") {
     return (
       <AccessRestriction
         title="Role Inactive"
@@ -437,11 +403,8 @@ export default function ProtectedRoute() {
   /* =======================================================
      AUTHORIZED
 
-     PermissionRoute will decide which individual pages and
-     modules this user can access.
+     PermissionRoute checks module-specific permissions.
   ======================================================= */
 
-  return (
-    <Outlet />
-  );
+  return <Outlet />;
 }

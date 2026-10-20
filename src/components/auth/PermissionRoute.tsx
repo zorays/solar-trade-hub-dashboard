@@ -1,6 +1,5 @@
-import type {
-  ReactNode,
-} from "react";
+
+import type { ReactNode } from "react";
 
 import {
   Navigate,
@@ -8,9 +7,7 @@ import {
   useLocation,
 } from "react-router";
 
-import {
-  useAuth,
-} from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 import {
   hasAllUserPermissions,
@@ -19,53 +16,44 @@ import {
 } from "../../services/auth.service";
 
 /* =========================================================
-   PERMISSION ROUTE PROPS
+   SOLAR TRADE HUB DASHBOARD
+   PERMISSION ROUTE
+
+   Responsibilities:
+   - Authentication fallback
+   - Dashboard account validation
+   - Admin-only page restriction
+   - Single required permission
+   - Any-of permission check
+   - All-of permission check
+   - Access Denied handling
+
+   ProtectedRoute handles session, account and role checks.
+
+   Backend RBAC remains authoritative.
+========================================================= */
+
+/* =========================================================
+   PROPS
+
+   redirectTo remains supported for compatibility with
+   existing App.tsx routes.
+
+   Unauthorized users see Access Denied rather than being
+   redirected to another potentially restricted page.
 ========================================================= */
 
 type PermissionRouteProps = {
-  /*
-   * Single required permission.
-   *
-   * Example:
-   * products.view
-   */
   permission?: string;
 
-  /*
-   * User must have at least ONE of these permissions.
-   */
   anyOf?: string[];
 
-  /*
-   * User must have ALL of these permissions.
-   */
   allOf?: string[];
 
-  /*
-   * Restrict route to:
-   *
-   * admin
-   * super_admin
-   */
   adminOnly?: boolean;
 
-  /*
-   * Destination when access is denied.
-   *
-   * Default:
-   * /
-   */
   redirectTo?: string;
 
-  /*
-   * Supports both:
-   *
-   * <PermissionRoute>
-   *   <Page />
-   * </PermissionRoute>
-   *
-   * and nested React Router usage with <Outlet />.
-   */
   children?: ReactNode;
 };
 
@@ -75,14 +63,12 @@ type PermissionRouteProps = {
 
 const normalizePermission = (
   value: string
-): string => {
-  return value
-    .trim()
-    .toLowerCase();
-};
+): string => value.trim().toLowerCase();
 
 /* =========================================================
    NORMALIZE PERMISSION LIST
+
+   Remove duplicate and empty permission values.
 ========================================================= */
 
 const normalizePermissionList = (
@@ -91,12 +77,8 @@ const normalizePermissionList = (
   return [
     ...new Set(
       permissions
-        .map(
-          normalizePermission
-        )
-        .filter(
-          Boolean
-        )
+        .map(normalizePermission)
+        .filter(Boolean)
     ),
   ];
 };
@@ -109,6 +91,7 @@ function PermissionDenied() {
   return (
     <div className="flex min-h-[420px] items-center justify-center px-4">
       <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-8">
+
         {/* BRAND */}
 
         <div className="mb-6 flex items-center gap-3">
@@ -125,7 +108,6 @@ function PermissionDenied() {
                 stroke="white"
                 strokeWidth="4"
               />
-
               <path
                 d="M28 32H16L8 24L17 15L24 22L18 28"
                 stroke="white"
@@ -161,16 +143,16 @@ function PermissionDenied() {
           </span>
         </div>
 
-        {/* CONTENT */}
+        {/* MESSAGE */}
 
         <h1 className="text-2xl font-bold tracking-[-0.02em] text-gray-900 dark:text-white">
           Access Denied
         </h1>
 
         <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-400">
-          Your dashboard account does not have permission to access this
-          Solar Trade Hub page. Contact an administrator if you need
-          additional access.
+          Your dashboard account does not have permission to
+          access this Solar Trade Hub page. Contact an
+          administrator if you need additional access.
         </p>
       </div>
     </div>
@@ -178,7 +160,7 @@ function PermissionDenied() {
 }
 
 /* =========================================================
-   PERMISSION LOADER
+   PERMISSION LOADING SCREEN
 ========================================================= */
 
 function PermissionLoader() {
@@ -203,20 +185,6 @@ function PermissionLoader() {
 
 /* =========================================================
    PERMISSION ROUTE
-
-   ProtectedRoute handles:
-   - authentication
-   - dashboard account
-   - account status
-   - email verification
-   - assigned role
-   - active role
-
-   PermissionRoute handles:
-   - admin-only pages
-   - single permission
-   - any-of permissions
-   - all-of permissions
 ========================================================= */
 
 export default function PermissionRoute({
@@ -224,55 +192,47 @@ export default function PermissionRoute({
   anyOf = [],
   allOf = [],
   adminOnly = false,
-  redirectTo = "/",
+  redirectTo: _redirectTo = "/",
   children,
 }: PermissionRouteProps) {
-  const location =
-    useLocation();
+  const location = useLocation();
 
   const {
     user,
     isLoading,
     isAuthenticated,
     isAdmin,
-  } =
-    useAuth();
+  } = useAuth();
 
   /* =======================================================
-     LOADING
+     INITIAL AUTH LOADING
+
+     Do not evaluate permissions while the authentication
+     provider is still verifying the backend session.
   ======================================================= */
 
-  if (
-    isLoading
-  ) {
-    return (
-      <PermissionLoader />
-    );
+  if (isLoading) {
+    return <PermissionLoader />;
   }
 
   /* =======================================================
-     AUTHENTICATION
+     AUTHENTICATION FALLBACK
 
-     This normally gets handled by ProtectedRoute, but keep
-     this defensive check so PermissionRoute also works when
-     used independently.
+     ProtectedRoute normally handles this.
+
+     Keep a defensive check so PermissionRoute can also
+     work independently.
   ======================================================= */
 
-  if (
-    !isAuthenticated ||
-    !user
-  ) {
+  if (!isAuthenticated || !user) {
     return (
       <Navigate
         to="/signin"
         replace
         state={{
           from: {
-            pathname:
-              location.pathname,
-
-            search:
-              location.search,
+            pathname: location.pathname,
+            search: location.search,
           },
         }}
       />
@@ -280,91 +240,54 @@ export default function PermissionRoute({
   }
 
   /* =======================================================
-     DASHBOARD ACCOUNT DEFENSE
+     DASHBOARD ACCOUNT VALIDATION
   ======================================================= */
 
-  if (
-    user.accountType !==
-    "dashboard"
-  ) {
-    return (
-      <PermissionDenied />
-    );
+  if (user.accountType !== "dashboard") {
+    return <PermissionDenied />;
   }
 
   /* =======================================================
-     ADMIN-ONLY ROUTE
+     ADMIN-ONLY ROUTES
+
+     Preserve existing admin/super_admin policy from
+     AuthContext and auth.service.ts.
   ======================================================= */
 
-  if (
-    adminOnly &&
-    !isAdmin
-  ) {
-    /*
-     * Avoid:
-     *
-     * / → denied → redirect /
-     *              ↓
-     *         infinite loop
-     */
-    if (
-      redirectTo ===
-      location.pathname
-    ) {
-      return (
-        <PermissionDenied />
-      );
-    }
-
-    return (
-      <Navigate
-        to={
-          redirectTo
-        }
-        replace
-        state={{
-          message:
-            "You are not authorized to access this Solar Trade Hub page.",
-        }}
-      />
-    );
+  if (adminOnly && !isAdmin) {
+    return <PermissionDenied />;
   }
 
   /* =======================================================
-     NORMALIZE REQUIREMENTS
+     NORMALIZE REQUIRED PERMISSIONS
   ======================================================= */
 
-  const requiredPermission =
-    permission
-      ? normalizePermission(
-          permission
-        )
-      : "";
+  const requiredPermission = permission
+    ? normalizePermission(permission)
+    : "";
 
   const anyPermissions =
-    normalizePermissionList(
-      anyOf
-    );
+    normalizePermissionList(anyOf);
 
   const allPermissions =
-    normalizePermissionList(
-      allOf
-    );
+    normalizePermissionList(allOf);
 
   /* =======================================================
-     PERMISSION CHECK
+     PERMISSION EVALUATION
+
+     When more than one requirement is supplied,
+     all requirement groups must pass.
+
+     permission: one required permission
+
+     anyOf: at least one permission
+
+     allOf: every listed permission
   ======================================================= */
 
-  let hasAccess =
-    true;
+  let hasAccess = true;
 
-  /* =======================================================
-     SINGLE PERMISSION
-  ======================================================= */
-
-  if (
-    requiredPermission
-  ) {
+  if (requiredPermission) {
     hasAccess =
       hasAccess &&
       hasUserPermission(
@@ -373,16 +296,7 @@ export default function PermissionRoute({
       );
   }
 
-  /* =======================================================
-     ANY PERMISSION
-
-     At least one permission must match.
-  ======================================================= */
-
-  if (
-    anyPermissions.length >
-    0
-  ) {
+  if (anyPermissions.length > 0) {
     hasAccess =
       hasAccess &&
       hasAnyUserPermission(
@@ -391,16 +305,7 @@ export default function PermissionRoute({
       );
   }
 
-  /* =======================================================
-     ALL PERMISSIONS
-
-     Every permission must match.
-  ======================================================= */
-
-  if (
-    allPermissions.length >
-    0
-  ) {
+  if (allPermissions.length > 0) {
     hasAccess =
       hasAccess &&
       hasAllUserPermissions(
@@ -410,53 +315,31 @@ export default function PermissionRoute({
   }
 
   /* =======================================================
-     DENIED
+     ACCESS DENIED
+
+     Do not redirect to "/".
+
+     A staff user might not have dashboard.view permission,
+     causing confusing redirects or repeated access denial.
+
+     Show the restriction on the current page instead.
   ======================================================= */
 
-  if (
-    !hasAccess
-  ) {
-    /*
-     * Prevent a route from redirecting to itself forever.
-     */
-    if (
-      redirectTo ===
-      location.pathname
-    ) {
-      return (
-        <PermissionDenied />
-      );
-    }
-
-    return (
-      <Navigate
-        to={
-          redirectTo
-        }
-        replace
-        state={{
-          message:
-            "You do not have permission to access this Solar Trade Hub page.",
-        }}
-      />
-    );
+  if (!hasAccess) {
+    return <PermissionDenied />;
   }
 
   /* =======================================================
      AUTHORIZED CONTENT
+
+     Supports:
+     - <PermissionRoute><Page /></PermissionRoute>
+     - Nested React Router routes using <Outlet />
   ======================================================= */
 
-  if (
-    children
-  ) {
-    return (
-      <>
-        {children}
-      </>
-    );
+  if (children) {
+    return <>{children}</>;
   }
 
-  return (
-    <Outlet />
-  );
+  return <Outlet />;
 }
