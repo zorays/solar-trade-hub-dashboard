@@ -14,29 +14,27 @@ import { ChevronDownIcon, GridIcon } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "../context/AuthContext";
 
-import {
-  hasUserPermission,
-} from "../services/auth.service";
+import { hasUserPermission } from "../services/auth.service";
 
 /* =========================================================
    SOLAR TRADE HUB — ADMINISTRATION SIDEBAR
 
-   Existing dashboard routes are preserved.
+   COMPLETE CAREERS NAVIGATION
 
-   Planned modules are visible but disabled until their
-   actual pages, backend integrations and protected routes
-   are completed.
+   Careers:
+   - Job Openings
+   - Applications
+   - Candidate Pipeline
 
-   Existing Product List:
-   External master catalogue — unchanged.
+   Existing marketplace, commerce, management,
+   and system navigation is preserved.
 
-   Supplier Products:
-   Separate supplier-owned listings with subscription
-   entitlement, stock and admin approval.
+   Access:
+   careers.view OR careers.manage
+========================================================= */
 
-   Plans:
-   Existing subscription management remains the master
-   source for bidding and product listing allowances.
+/* =========================================================
+   TYPES
 ========================================================= */
 
 type AccessRule = {
@@ -85,10 +83,14 @@ type IconName =
   | "careers";
 
 /* =========================================================
-   ICONS
+   SIDEBAR ICONS
 ========================================================= */
 
-function SidebarIcon({ name }: { name: IconName }) {
+function SidebarIcon({
+  name,
+}: {
+  name: IconName;
+}) {
   const props = {
     viewBox: "0 0 24 24",
     fill: "none",
@@ -146,7 +148,13 @@ function SidebarIcon({ name }: { name: IconName }) {
     case "payments":
       return (
         <svg {...props}>
-          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <rect
+            x="3"
+            y="5"
+            width="18"
+            height="14"
+            rx="2"
+          />
           <path d="M3 9h18M7 15h4M16 13v4M14 15h4" />
         </svg>
       );
@@ -220,7 +228,13 @@ function SidebarIcon({ name }: { name: IconName }) {
     case "careers":
       return (
         <svg {...props}>
-          <rect x="3" y="7" width="18" height="14" rx="2" />
+          <rect
+            x="3"
+            y="7"
+            width="18"
+            height="14"
+            rx="2"
+          />
           <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           <path d="M3 13a18 18 0 0 0 18 0" />
           <path d="M11 12h2v3h-2z" />
@@ -236,14 +250,18 @@ function SidebarIcon({ name }: { name: IconName }) {
    ACCESS RULE HELPERS
 ========================================================= */
 
-const viewOrManage = (module: string): AccessRule => ({
+const viewOrManage = (
+  module: string
+): AccessRule => ({
   anyOf: [
     `${module}.view`,
     `${module}.manage`,
   ],
 });
 
-const manageOnly = (module: string): AccessRule => ({
+const manageOnly = (
+  module: string
+): AccessRule => ({
   anyOf: [`${module}.manage`],
 });
 
@@ -299,14 +317,13 @@ const paymentsManageAccess: AccessRule = {
 
 /* =========================================================
    NAVIGATION CONFIGURATION
-
-   Existing routes verified against previous App.tsx.
-
-   Disabled items are planned functionality, not fake
-   navigable pages.
 ========================================================= */
 
 const sections: MenuSection[] = [
+  /* =======================================================
+     OVERVIEW
+  ======================================================= */
+
   {
     title: "",
     items: [
@@ -340,12 +357,12 @@ const sections: MenuSection[] = [
           },
           {
             name: "Supplier Products",
-            disabled: true,
+            path: "/products/supplier-products",
             access: viewOrManage("products"),
           },
           {
             name: "Product Approvals",
-            disabled: true,
+            path: "/products/approvals",
             access: manageOnly("products"),
           },
         ],
@@ -408,7 +425,7 @@ const sections: MenuSection[] = [
           },
           {
             name: "Supplier Stock",
-            disabled: true,
+            path: "/suppliers/stock",
             access: viewOrManage("products"),
           },
           {
@@ -481,6 +498,7 @@ const sections: MenuSection[] = [
           },
         ],
       },
+
       {
         name: "Payments",
         icon: <SidebarIcon name="payments" />,
@@ -502,6 +520,7 @@ const sections: MenuSection[] = [
           },
         ],
       },
+
       {
         name: "Tenders",
         icon: <SidebarIcon name="tenders" />,
@@ -518,6 +537,7 @@ const sections: MenuSection[] = [
           },
         ],
       },
+
       {
         name: "Deals",
         icon: <SidebarIcon name="deals" />,
@@ -544,12 +564,40 @@ const sections: MenuSection[] = [
   {
     title: "Management",
     items: [
+      /* ---------------------------------------------------
+         CAREERS MANAGEMENT
+
+         All entries are enabled.
+
+         /careers
+         /careers/applications
+         /careers/pipeline
+      --------------------------------------------------- */
+
       {
         name: "Careers",
         icon: <SidebarIcon name="careers" />,
-        disabled: true,
-        access: { adminOnly: true },
+        access: viewOrManage("careers"),
+
+        subItems: [
+          {
+            name: "Job Openings",
+            path: "/careers",
+            access: viewOrManage("careers"),
+          },
+          {
+            name: "Applications",
+            path: "/careers/applications",
+            access: viewOrManage("careers"),
+          },
+          {
+            name: "Candidate Pipeline",
+            path: "/careers/pipeline",
+            access: viewOrManage("careers"),
+          },
+        ],
       },
+
       {
         name: "Company Users",
         icon: <SidebarIcon name="users" />,
@@ -566,6 +614,7 @@ const sections: MenuSection[] = [
           },
         ],
       },
+
       {
         name: "Content",
         icon: <SidebarIcon name="content" />,
@@ -587,6 +636,7 @@ const sections: MenuSection[] = [
           },
         ],
       },
+
       {
         name: "Reports",
         icon: <SidebarIcon name="reports" />,
@@ -639,12 +689,14 @@ const sections: MenuSection[] = [
           },
         ],
       },
+
       {
         name: "Notifications",
         icon: <SidebarIcon name="notifications" />,
         path: "/notifications",
         access: viewOrManage("notifications"),
       },
+
       {
         name: "Help & Support",
         icon: <SidebarIcon name="help" />,
@@ -656,7 +708,7 @@ const sections: MenuSection[] = [
 ];
 
 /* =========================================================
-   SIDEBAR COMPONENT
+   MAIN SIDEBAR COMPONENT
 ========================================================= */
 
 const AppSidebar = () => {
@@ -668,6 +720,7 @@ const AppSidebar = () => {
   } = useSidebar();
 
   const { user, isAdmin } = useAuth();
+
   const location = useLocation();
 
   const [openSubmenu, setOpenSubmenu] =
@@ -683,6 +736,7 @@ const AppSidebar = () => {
   const canAccess = useCallback(
     (access?: AccessRule): boolean => {
       if (!access) return true;
+
       if (access.always) return true;
 
       if (access.adminOnly && !isAdmin) {
@@ -711,7 +765,7 @@ const AppSidebar = () => {
   );
 
   /* =======================================================
-     FILTER NAV ITEMS
+     FILTER VISIBLE NAVIGATION
   ======================================================= */
 
   const visibleSections = useMemo(
@@ -725,17 +779,19 @@ const AppSidebar = () => {
               }
 
               if (item.subItems?.length) {
-                const subItems =
-                  item.subItems.filter(
-                    (subItem) =>
-                      canAccess(subItem.access)
-                  );
+                const subItems = item.subItems.filter(
+                  (subItem) =>
+                    canAccess(subItem.access)
+                );
 
                 if (!subItems.length) {
                   return null;
                 }
 
-                return { ...item, subItems };
+                return {
+                  ...item,
+                  subItems,
+                };
               }
 
               return item;
@@ -745,10 +801,14 @@ const AppSidebar = () => {
                 item !== null
             );
 
-          return { ...section, items };
+          return {
+            ...section,
+            items,
+          };
         })
         .filter(
-          (section) => section.items.length > 0
+          (section) =>
+            section.items.length > 0
         ),
     [canAccess]
   );
@@ -773,9 +833,23 @@ const AppSidebar = () => {
     [location.pathname]
   );
 
+  /* =======================================================
+     ACTIVE SUBMENU DETECTION
+
+     Prefer the longest matching path.
+
+     Example:
+     /careers/applications
+     should match Applications, not Job Openings.
+  ======================================================= */
+
   const getActiveSubItemPath = useCallback(
-    (subItems?: SubItem[]): string | null => {
-      if (!subItems?.length) return null;
+    (
+      subItems?: SubItem[]
+    ): string | null => {
+      if (!subItems?.length) {
+        return null;
+      }
 
       const matches = subItems
         .filter(
@@ -801,7 +875,9 @@ const AppSidebar = () => {
         for (const item of section.items) {
           if (
             item.subItems?.length &&
-            getActiveSubItemPath(item.subItems)
+            getActiveSubItemPath(
+              item.subItems
+            )
           ) {
             return item.name;
           }
@@ -810,11 +886,14 @@ const AppSidebar = () => {
 
       return null;
     },
-    [visibleSections, getActiveSubItemPath]
+    [
+      visibleSections,
+      getActiveSubItemPath,
+    ]
   );
 
   /* =======================================================
-     AUTO-OPEN ACTIVE MENU
+     AUTO-OPEN ACTIVE SUBMENU
   ======================================================= */
 
   useEffect(() => {
@@ -840,6 +919,10 @@ const AppSidebar = () => {
     });
   }, [visibleSections]);
 
+  /* =======================================================
+     TOGGLE SUBMENU
+  ======================================================= */
+
   const toggleSubmenu = useCallback(
     (name: string): void => {
       if (!showText && !isExpanded) {
@@ -850,11 +933,15 @@ const AppSidebar = () => {
         current === name ? null : name
       );
     },
-    [showText, isExpanded, setIsHovered]
+    [
+      showText,
+      isExpanded,
+      setIsHovered,
+    ]
   );
 
   /* =======================================================
-     RENDER NAVIGATION ITEM
+     RENDER NAV ITEM
   ======================================================= */
 
   const renderItem = (item: NavItem) => {
@@ -862,20 +949,25 @@ const AppSidebar = () => {
       Boolean(item.subItems?.length);
 
     const activeSubItemPath =
-      getActiveSubItemPath(item.subItems);
+      getActiveSubItemPath(
+        item.subItems
+      );
 
     const isActive = item.path
       ? pathMatches(item.path)
       : Boolean(activeSubItemPath);
 
-    const isOpen = openSubmenu === item.name;
+    const isOpen =
+      openSubmenu === item.name;
 
     const mainClass = [
       "group flex min-h-11 w-full items-center rounded-xl px-3",
       "transition-colors duration-150",
       "focus-visible:outline-none focus-visible:ring-2",
       "focus-visible:ring-[#5b2eff]",
-      !showText ? "lg:justify-center" : "",
+      !showText
+        ? "lg:justify-center"
+        : "",
       isActive
         ? "bg-[#fff1ec] text-[#ff4b1f] dark:bg-[#ff4b1f]/10 dark:text-[#ff6a45]"
         : "text-[#61708b] hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/[0.05] dark:hover:text-white",
@@ -888,8 +980,16 @@ const AppSidebar = () => {
             type="button"
             aria-expanded={isOpen}
             aria-label={`${item.name} menu`}
-            title={!showText ? item.name : undefined}
-            onClick={() => toggleSubmenu(item.name)}
+            title={
+              !showText
+                ? item.name
+                : undefined
+            }
+            onClick={() =>
+              toggleSubmenu(
+                item.name
+              )
+            }
             className={mainClass}
           >
             <span className="flex size-6 shrink-0 items-center justify-center">
@@ -939,9 +1039,15 @@ const AppSidebar = () => {
           item.path && (
             <Link
               to={item.path}
-              title={!showText ? item.name : undefined}
+              title={
+                !showText
+                  ? item.name
+                  : undefined
+              }
               aria-current={
-                isActive ? "page" : undefined
+                isActive
+                  ? "page"
+                  : undefined
               }
               className={mainClass}
             >
@@ -971,57 +1077,63 @@ const AppSidebar = () => {
           >
             <div className="min-h-0 overflow-hidden">
               <ul className="ml-10 mt-1 space-y-1 pb-1">
-                {item.subItems?.map((subItem) => {
-                  const active =
-                    Boolean(subItem.path) &&
-                    activeSubItemPath ===
-                      subItem.path;
+                {item.subItems?.map(
+                  (subItem) => {
+                    const active =
+                      Boolean(subItem.path) &&
+                      activeSubItemPath ===
+                        subItem.path;
 
-                  if (
-                    subItem.disabled ||
-                    !subItem.path
-                  ) {
+                    if (
+                      subItem.disabled ||
+                      !subItem.path
+                    ) {
+                      return (
+                        <li key={subItem.name}>
+                          <div
+                            aria-disabled="true"
+                            title="Feature pending"
+                            className="flex min-h-9 cursor-not-allowed items-center justify-between gap-2 rounded-lg px-3 text-[13px] text-gray-400 opacity-70 dark:text-gray-500"
+                          >
+                            <span className="truncate">
+                              {subItem.name}
+                            </span>
+
+                            <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[9px] dark:bg-gray-800">
+                              Soon
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    }
+
                     return (
-                      <li key={subItem.name}>
-                        <div
-                          aria-disabled="true"
-                          title="Feature pending"
-                          className="flex min-h-9 cursor-not-allowed items-center justify-between gap-2 rounded-lg px-3 text-[13px] text-gray-400 opacity-70 dark:text-gray-500"
+                      <li
+                        key={subItem.path}
+                      >
+                        <Link
+                          to={subItem.path}
+                          aria-current={
+                            active
+                              ? "page"
+                              : undefined
+                          }
+                          className={[
+                            "flex min-h-9 items-center rounded-lg px-3 text-[13px]",
+                            "transition-colors duration-150",
+                            "focus-visible:outline-none focus-visible:ring-2",
+                            "focus-visible:ring-[#5b2eff]",
+                            active
+                              ? "bg-[#5b2eff]/10 font-semibold text-[#5b2eff] dark:bg-[#5b2eff]/15 dark:text-[#8d74ff]"
+                              : "text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-white/[0.05] dark:hover:text-gray-200",
+                          ].join(" ")}
                         >
-                          <span className="truncate">
-                            {subItem.name}
-                          </span>
-
-                          <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[9px] dark:bg-gray-800">
-                            Soon
-                          </span>
-                        </div>
+                          {subItem.name}
+                        </Link>
                       </li>
                     );
                   }
-
-                  return (
-                    <li key={subItem.path}>
-                      <Link
-                        to={subItem.path}
-                        aria-current={
-                          active ? "page" : undefined
-                        }
-                        className={[
-                          "flex min-h-9 items-center rounded-lg px-3 text-[13px]",
-                          "transition-colors duration-150",
-                          "focus-visible:outline-none focus-visible:ring-2",
-                          "focus-visible:ring-[#5b2eff]",
-                          active
-                            ? "bg-[#5b2eff]/10 font-semibold text-[#5b2eff] dark:bg-[#5b2eff]/15 dark:text-[#8d74ff]"
-                            : "text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-white/[0.05] dark:hover:text-gray-200",
-                        ].join(" ")}
-                      >
-                        {subItem.name}
-                      </Link>
-                    </li>
-                  );
-                })}
+                )}
               </ul>
             </div>
           </div>
@@ -1042,7 +1154,9 @@ const AppSidebar = () => {
         "transition-[width,transform] duration-300 ease-in-out",
         "dark:border-gray-800 dark:bg-gray-950",
         "lg:mt-0 lg:h-screen",
-        isExpanded || isMobileOpen || isHovered
+        isExpanded ||
+        isMobileOpen ||
+        isHovered
           ? "w-[290px]"
           : "w-[90px]",
         isMobileOpen
@@ -1105,31 +1219,42 @@ const AppSidebar = () => {
 
       <div className="flex flex-1 flex-col overflow-y-auto pb-6 no-scrollbar">
         <nav aria-label="Solar Trade Hub administration">
-          {visibleSections.map((section) => (
-            <div
-              key={section.title || "overview"}
-              className={
-                section.title ? "mt-6" : ""
-              }
-            >
-              {section.title && showText && (
-                <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[#8793aa]">
-                  {section.title}
-                </p>
-              )}
+          {visibleSections.map(
+            (section) => (
+              <div
+                key={
+                  section.title ||
+                  "overview"
+                }
+                className={
+                  section.title
+                    ? "mt-6"
+                    : ""
+                }
+              >
+                {section.title &&
+                  showText && (
+                    <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[#8793aa]">
+                      {section.title}
+                    </p>
+                  )}
 
-              {!showText && section.title && (
-                <div
-                  className="mx-3 my-3 h-px bg-gray-200 dark:bg-gray-800"
-                  aria-hidden="true"
-                />
-              )}
+                {!showText &&
+                  section.title && (
+                    <div
+                      className="mx-3 my-3 h-px bg-gray-200 dark:bg-gray-800"
+                      aria-hidden="true"
+                    />
+                  )}
 
-              <ul className="flex flex-col gap-1.5">
-                {section.items.map(renderItem)}
-              </ul>
-            </div>
-          ))}
+                <ul className="flex flex-col gap-1.5">
+                  {section.items.map(
+                    renderItem
+                  )}
+                </ul>
+              </div>
+            )
+          )}
         </nav>
       </div>
     </aside>

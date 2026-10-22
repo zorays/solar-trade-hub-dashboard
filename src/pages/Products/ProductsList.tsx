@@ -1,12 +1,13 @@
+
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import type { ReactNode } from "react";
-
 import { Link } from "react-router";
 
 import {
@@ -27,10 +28,7 @@ import {
   X,
 } from "lucide-react";
 
-import {
-  toast,
-  Toaster,
-} from "sonner";
+import { toast, Toaster } from "sonner";
 
 import PageMeta from "../../components/common/PageMeta";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -44,7 +42,6 @@ import {
   formatProductType,
   getProductBrandName,
   getProductCategoryName,
-  getProductDisplayImage,
   getProductErrorMessage,
   getProducts,
   refreshProducts,
@@ -54,7 +51,11 @@ import {
 } from "../../services/product/product.service";
 
 /* =========================================================
-   TYPES
+   SOLAR TRADE HUB
+   PRODUCT LIST
+
+   External catalogue is read-only.
+   Supplier marketplace access is managed locally.
 ========================================================= */
 
 type AvailabilityFilter =
@@ -76,12 +77,6 @@ type SupplierOption = {
   companyName: string;
   status?: string;
   verificationStatus?: string;
-  logo?: string;
-  businessType?: string;
-  address?: {
-    city?: string;
-    country?: string;
-  };
 };
 
 type MarketplaceSupplierAccess = {
@@ -89,7 +84,6 @@ type MarketplaceSupplierAccess = {
   supplierId?: string | null;
   supplierMongoId?: string | null;
   companyName?: string | null;
-  supplierLogo?: string | null;
   supplierStatus?: string | null;
   verificationStatus?: string | null;
   enabled?: boolean;
@@ -97,6 +91,7 @@ type MarketplaceSupplierAccess = {
   disabledAt?: string | null;
   subscriptionActive?: boolean;
   visible?: boolean;
+  marketplaceVisible?: boolean;
   subscription?: {
     id?: string | null;
     planCode?: string | null;
@@ -118,21 +113,18 @@ type SupplierApiEnvelope = {
   suppliers?: SupplierOption[];
 };
 
-/* =========================================================
-   PAGE SIZE
-========================================================= */
-
-const PAGE_SIZE_OPTIONS = [
-  20,
-  50,
-  100,
-];
+type FilterOption = {
+  value: string;
+  label: string;
+};
 
 /* =========================================================
-   AVAILABILITY FILTER
+   CONSTANTS
 ========================================================= */
 
-const AVAILABILITY_OPTIONS = [
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+const AVAILABILITY_OPTIONS: FilterOption[] = [
   {
     value: "All",
     label: "All Availability",
@@ -147,18 +139,14 @@ const AVAILABILITY_OPTIONS = [
   },
 ];
 
-/* =========================================================
-   MARKETPLACE FILTER
-========================================================= */
-
-const MARKETPLACE_OPTIONS = [
+const MARKETPLACE_OPTIONS: FilterOption[] = [
   {
     value: "All",
-    label: "All Marketplace",
+    label: "All Statuses",
   },
   {
     value: "visible",
-    label: "Live on Marketplace",
+    label: "Live",
   },
   {
     value: "enabled",
@@ -166,208 +154,221 @@ const MARKETPLACE_OPTIONS = [
   },
   {
     value: "enabled_not_live",
-    label: "Enabled / Not Live",
+    label: "Pending Eligibility",
   },
   {
     value: "disabled",
-    label: "Not Enabled",
+    label: "Disabled",
   },
 ];
 
-/* =========================================================
-   MEDIA URL
-
-   Biz Daily product images may arrive as:
-   1. Full URL
-   2. /api/public/catalog-images/...
-   3. /catalog-images/...
-
-   External catalog images must resolve against Biz Daily,
-   not the Solar Trade Hub backend.
-========================================================= */
-
-const BIZ_DAILY_API_ORIGIN =
+const BIZ_DAILY_ORIGIN =
   "https://api.biz-daily.techoptionz.com";
 
+/* =========================================================
+   IMAGE HELPERS
+
+   Images come from the external company catalogue.
+
+   Priority:
+   1. imageThumbUrl
+   2. imageUrl
+   3. Alternative image references
+
+   No external API key is exposed to the browser.
+========================================================= */
+
+function readImageReference(
+  value: unknown
+): string {
+  if (typeof value === "string") {
+    const text = value.trim();
+
+    if (
+      !text ||
+      ["null", "undefined", "string"].includes(
+        text.toLowerCase()
+      )
+    ) {
+      return "";
+    }
+
+    return text;
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const record = value as Record<
+      string,
+      unknown
+    >;
+
+    return (
+      readImageReference(record.url) ||
+      readImageReference(record.imageUrl) ||
+      readImageReference(record.src) ||
+      readImageReference(record.path)
+    );
+  }
+
+  return "";
+}
+
 function resolveMediaUrl(
-  imageUrl: string | null | undefined
-) {
-  const value = String(
-    imageUrl || ""
-  ).trim();
+  rawValue: unknown
+): string {
+  const value = readImageReference(rawValue);
 
   if (!value) {
     return "";
   }
 
   if (
-    value.startsWith("data:") ||
+    value.startsWith("data:image/") ||
     value.startsWith("blob:")
   ) {
     return value;
   }
 
+  if (value.startsWith("//")) {
+    return `https:${value}`;
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value);
+
+      if (
+        parsed.protocol !== "http:" &&
+        parsed.protocol !== "https:"
+      ) {
+        return "";
+      }
+
+      return parsed.toString();
+    } catch {
+      return "";
+    }
+  }
+
+  const path = value.replace(/^\/+/, "");
+
   if (
-    value.startsWith("http://") ||
-    value.startsWith("https://")
+    path.startsWith("api/public/")
   ) {
-    return value;
+    return `${BIZ_DAILY_ORIGIN}/${path}`;
   }
 
   if (
-    value.startsWith(
-      "/api/public/catalog-images/"
-    )
+    path.startsWith("catalog-images/")
   ) {
-    return `${BIZ_DAILY_API_ORIGIN}${value}`;
+    return `${BIZ_DAILY_ORIGIN}/api/public/${path}`;
   }
 
-  if (
-    value.startsWith(
-      "api/public/catalog-images/"
-    )
-  ) {
-    return `${BIZ_DAILY_API_ORIGIN}/${value}`;
-  }
+  const imageDirectoryIndex =
+    path.indexOf("catalog-images/");
 
-  if (
-    value.startsWith(
-      "/catalog-images/"
-    )
-  ) {
-    return `${BIZ_DAILY_API_ORIGIN}/api/public${value}`;
-  }
-
-  if (
-    value.startsWith(
-      "catalog-images/"
-    )
-  ) {
-    return `${BIZ_DAILY_API_ORIGIN}/api/public/${value}`;
-  }
-
-  const catalogImageIndex =
-    value.indexOf(
-      "catalog-images/"
+  if (imageDirectoryIndex >= 0) {
+    return (
+      `${BIZ_DAILY_ORIGIN}/api/public/` +
+      path.slice(imageDirectoryIndex)
     );
-
-  if (catalogImageIndex >= 0) {
-    const catalogPath =
-      value.slice(
-        catalogImageIndex
-      );
-
-    return `${BIZ_DAILY_API_ORIGIN}/api/public/${catalogPath}`;
   }
 
-  const baseURL =
-    api.defaults.baseURL;
-
-  if (!baseURL) {
-    return value;
-  }
-
+  // Preserve the original fallback for image paths
+  // hosted on the Solar Trade Hub API server.
   try {
-    const apiUrl =
-      new URL(
-        baseURL,
-        window.location.origin
-      );
+    const baseURL = api.defaults.baseURL;
 
-    const mediaPath =
-      value.startsWith("/")
-        ? value
-        : `/${value}`;
+    if (!baseURL) {
+      return value;
+    }
+
+    const apiOrigin = new URL(
+      baseURL,
+      window.location.origin
+    ).origin;
 
     return new URL(
-      mediaPath,
-      apiUrl.origin
+      value.startsWith("/")
+        ? value
+        : `/${value}`,
+      apiOrigin
     ).toString();
   } catch {
     return value;
   }
 }
 
-/* =========================================================
-   PRODUCT IMAGE CANDIDATES
-========================================================= */
-
 function getProductImageCandidates(
   product: Product
-) {
-  const raw =
-    product as Product &
-      Record<string, any>;
+): string[] {
+  const raw = product as Product &
+    Record<string, any>;
 
-  const possibleValues:
-    unknown[] = [
-      product.imageThumbUrl,
-      product.imageUrl,
-      raw.thumbnailUrl,
-      raw.thumbnail,
-      raw.thumbUrl,
-      raw.image,
-      raw.photoUrl,
-      raw.photo,
-      raw.media?.thumbnailUrl,
-      raw.media?.thumbUrl,
-      raw.media?.imageUrl,
-      raw.media?.url,
-      raw.images?.[0]
-        ?.thumbnailUrl,
-      raw.images?.[0]
-        ?.thumbUrl,
-      raw.images?.[0]
-        ?.imageUrl,
-      raw.images?.[0]
-        ?.url,
-      getProductDisplayImage(
-        product
-      ),
-    ];
+  const media = raw.media || {};
 
-  const urls =
-    possibleValues
-      .map((value) => {
-        if (
-          typeof value !==
-          "string"
-        ) {
-          return "";
-        }
+  const firstImage =
+    Array.isArray(raw.images) &&
+    raw.images.length > 0
+      ? raw.images[0]
+      : null;
 
-        return resolveMediaUrl(
-          value
-        );
-      })
-      .filter(Boolean);
+  const values: unknown[] = [
+    product.imageThumbUrl,
+    product.imageUrl,
+
+    raw.image_thumb_url,
+    raw.image_url,
+
+    raw.thumbnailUrl,
+    raw.thumbUrl,
+    raw.thumbnail,
+    raw.image,
+    raw.photoUrl,
+    raw.photo,
+
+    media.imageThumbUrl,
+    media.thumbnailUrl,
+    media.thumbUrl,
+    media.imageUrl,
+    media.url,
+
+    firstImage?.thumbnailUrl,
+    firstImage?.thumbUrl,
+    firstImage?.imageThumbUrl,
+    firstImage?.imageUrl,
+    firstImage?.url,
+    firstImage,
+  ];
+
+  const candidates = values
+    .map(resolveMediaUrl)
+    .filter(Boolean);
 
   return Array.from(
-    new Set(urls)
+    new Set(candidates)
   );
 }
 
 /* =========================================================
-   DATE
+   DISPLAY HELPERS
 ========================================================= */
 
 function formatDateTime(
-  value:
-    | string
-    | null
-    | undefined
-) {
+  value: string | null | undefined
+): string {
   if (!value) {
     return "—";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
   if (
-    Number.isNaN(
-      date.getTime()
-    )
+    Number.isNaN(date.getTime())
   ) {
     return "—";
   }
@@ -385,22 +386,16 @@ function formatDateTime(
 }
 
 function formatDate(
-  value:
-    | string
-    | null
-    | undefined
-) {
+  value: string | null | undefined
+): string {
   if (!value) {
     return "—";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
   if (
-    Number.isNaN(
-      date.getTime()
-    )
+    Number.isNaN(date.getTime())
   ) {
     return "—";
   }
@@ -415,13 +410,9 @@ function formatDate(
   ).format(date);
 }
 
-/* =========================================================
-   SIZE
-========================================================= */
-
 function formatSize(
   product: Product
-) {
+): string {
   if (
     product.size === null ||
     product.size === undefined ||
@@ -431,8 +422,7 @@ function formatSize(
   }
 
   if (
-    typeof product.size ===
-    "number"
+    typeof product.size === "number"
   ) {
     return product.size.toLocaleString(
       "en-US",
@@ -442,126 +432,91 @@ function formatSize(
     );
   }
 
-  return String(
-    product.size
-  );
+  return String(product.size);
 }
-
-/* =========================================================
-   CATALOG OPTION NAMES
-========================================================= */
 
 function getCatalogNames(
   value: unknown
-) {
-  if (
-    !Array.isArray(value)
-  ) {
+): string[] {
+  if (!Array.isArray(value)) {
     return [];
   }
 
-  const names =
-    value
-      .map((item) => {
-        if (
-          typeof item ===
-          "string"
-        ) {
-          return item.trim();
-        }
+  const names = value
+    .map((item) => {
+      if (
+        typeof item === "string"
+      ) {
+        return item.trim();
+      }
 
-        if (
-          item &&
-          typeof item ===
-            "object" &&
-          "name" in item
-        ) {
-          const name =
-            (
-              item as {
-                name?: unknown;
-              }
-            ).name;
+      if (
+        item &&
+        typeof item === "object" &&
+        "name" in item
+      ) {
+        const name = (
+          item as {
+            name?: unknown;
+          }
+        ).name;
 
-          return typeof name ===
-            "string"
-            ? name.trim()
-            : "";
-        }
+        return typeof name === "string"
+          ? name.trim()
+          : "";
+      }
 
-        return "";
-      })
-      .filter(Boolean);
+      return "";
+    })
+    .filter(Boolean);
 
   return Array.from(
     new Set(names)
-  ).sort(
-    (first, second) =>
-      first.localeCompare(
-        second
-      )
+  ).sort((a, b) =>
+    a.localeCompare(b)
   );
 }
 
-/* =========================================================
-   PRODUCT ACCESS
-========================================================= */
-
 function getMarketplaceAccesses(
-  product:
-    | Product
-    | null
-    | undefined
+  product: Product | null | undefined
 ): MarketplaceSupplierAccess[] {
   if (!product) {
     return [];
   }
 
-  const value =
-    (
-      product as Product & {
-        marketplaceSuppliers?:
-          MarketplaceSupplierAccess[];
-      }
-    ).marketplaceSuppliers;
+  const accesses = (
+    product as Product & {
+      marketplaceSuppliers?:
+        MarketplaceSupplierAccess[];
+    }
+  ).marketplaceSuppliers;
 
-  return Array.isArray(value)
-    ? value
+  return Array.isArray(accesses)
+    ? accesses
     : [];
 }
 
-/* =========================================================
-   SUPPLIER RESPONSE
-========================================================= */
-
 function extractSuppliers(
   payload: SupplierApiEnvelope
-) {
+): SupplierOption[] {
   if (
-    Array.isArray(
-      payload.data
-    )
+    Array.isArray(payload.data)
   ) {
     return payload.data;
   }
 
   if (
     payload.data &&
-    !Array.isArray(
-      payload.data
-    ) &&
+    !Array.isArray(payload.data) &&
     Array.isArray(
       payload.data.suppliers
     )
   ) {
-    return payload.data
-      .suppliers;
+    return payload.data.suppliers;
   }
 
   if (
-    Array.isArray(
-      payload.suppliers
-    )
+    Array.isArray(payload.suppliers)
   ) {
     return payload.suppliers;
   }
@@ -570,7 +525,7 @@ function extractSuppliers(
 }
 
 /* =========================================================
-   MAIN
+   PRODUCTS PAGE
 ========================================================= */
 
 export default function ProductsList() {
@@ -582,28 +537,24 @@ export default function ProductsList() {
   const [
     pagination,
     setPagination,
-  ] =
-    useState<ProductPagination>({
-      page: 1,
-      limit: 20,
-      total: 0,
-      totalPages: 0,
-      hasNextPage: false,
-      hasPreviousPage: false,
-    });
+  ] = useState<ProductPagination>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
 
   const [
     catalog,
     setCatalog,
-  ] =
-    useState<ProductCatalogMeta | null>(
-      null
-    );
+  ] = useState<ProductCatalogMeta | null>(
+    null
+  );
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
   const [
     refreshing,
@@ -615,14 +566,8 @@ export default function ProductsList() {
     setLoadError,
   ] = useState("");
 
-  /* =======================================================
-     FILTERS
-  ======================================================= */
-
-  const [
-    search,
-    setSearch,
-  ] = useState("");
+  const [search, setSearch] =
+    useState("");
 
   const [
     debouncedSearch,
@@ -640,64 +585,46 @@ export default function ProductsList() {
   ] = useState("All");
 
   const [
-    type,
-    setType,
+    productType,
+    setProductType,
   ] = useState("All");
 
   const [
     availability,
     setAvailability,
-  ] =
-    useState<AvailabilityFilter>(
-      "All"
-    );
+  ] = useState<AvailabilityFilter>(
+    "All"
+  );
 
   const [
     marketplace,
     setMarketplace,
-  ] =
-    useState<MarketplaceFilter>(
-      "All"
-    );
+  ] = useState<MarketplaceFilter>(
+    "All"
+  );
 
-  const [
-    page,
-    setPage,
-  ] = useState(1);
+  const [page, setPage] =
+    useState(1);
 
-  const [
-    limit,
-    setLimit,
-  ] = useState(20);
-
-  /* =======================================================
-     SUPPLIERS
-  ======================================================= */
+  const [limit, setLimit] =
+    useState(20);
 
   const [
     suppliers,
     setSuppliers,
-  ] =
-    useState<SupplierOption[]>(
-      []
-    );
+  ] = useState<SupplierOption[]>([]);
 
   const [
     suppliersLoading,
     setSuppliersLoading,
   ] = useState(false);
 
-  /* =======================================================
-     MARKETPLACE ACCESS
-  ======================================================= */
-
   const [
     manageProduct,
     setManageProduct,
-  ] =
-    useState<Product | null>(
-      null
-    );
+  ] = useState<Product | null>(
+    null
+  );
 
   const [
     selectedSupplierId,
@@ -707,32 +634,30 @@ export default function ProductsList() {
   const [
     marketplaceAction,
     setMarketplaceAction,
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(
+    null
+  );
+
+  const requestSequence = useRef(0);
 
   /* =======================================================
-     SEARCH DEBOUNCE
+     DEBOUNCED SEARCH
   ======================================================= */
 
   useEffect(() => {
-    const timeout =
-      window.setTimeout(
-        () => {
-          setDebouncedSearch(
-            search.trim()
-          );
+    const timeout = window.setTimeout(
+      () => {
+        setDebouncedSearch(
+          search.trim()
+        );
 
-          setPage(1);
-        },
-        450
-      );
+        setPage(1);
+      },
+      450
+    );
 
     return () => {
-      window.clearTimeout(
-        timeout
-      );
+      window.clearTimeout(timeout);
     };
   }, [search]);
 
@@ -740,174 +665,176 @@ export default function ProductsList() {
      QUERY
   ======================================================= */
 
-  const buildQuery =
-    useCallback(() => {
-      return {
-        page,
-        limit,
+  const buildQuery = useCallback(
+    () => ({
+      page,
+      limit,
 
-        search:
-          debouncedSearch ||
-          undefined,
+      search:
+        debouncedSearch ||
+        undefined,
 
-        category:
-          category === "All"
-            ? undefined
-            : category,
+      category:
+        category === "All"
+          ? undefined
+          : category,
 
-        brand:
-          brand === "All"
-            ? undefined
-            : brand,
+      brand:
+        brand === "All"
+          ? undefined
+          : brand,
 
-        type:
-          type === "All"
-            ? undefined
-            : type,
+      type:
+        productType === "All"
+          ? undefined
+          : productType,
 
-        available:
-          availability === "All"
-            ? undefined
-            : availability ===
-              "available",
+      available:
+        availability === "All"
+          ? undefined
+          : availability ===
+            "available",
 
-        marketplaceEnabled:
-          marketplace ===
-            "enabled" ||
-          marketplace ===
-            "enabled_not_live"
-            ? true
-            : marketplace ===
-                "disabled"
-              ? false
-              : undefined,
+      marketplaceEnabled:
+        marketplace === "enabled" ||
+        marketplace ===
+          "enabled_not_live"
+          ? true
+          : marketplace === "disabled"
+            ? false
+            : undefined,
 
-        marketplaceVisible:
-          marketplace ===
-          "visible"
-            ? true
-            : marketplace ===
-                "enabled_not_live"
-              ? false
-              : undefined,
+      marketplaceVisible:
+        marketplace === "visible"
+          ? true
+          : marketplace ===
+              "enabled_not_live"
+            ? false
+            : undefined,
 
-        sortBy:
-          "name" as const,
-
-        sortOrder:
-          "asc" as const,
-      };
-    }, [
+      sortBy: "name" as const,
+      sortOrder: "asc" as const,
+    }),
+    [
       page,
       limit,
       debouncedSearch,
       category,
       brand,
-      type,
+      productType,
       availability,
       marketplace,
-    ]);
+    ]
+  );
 
   /* =======================================================
      LOAD PRODUCTS
   ======================================================= */
 
-  const loadProducts =
-    useCallback(
-      async (
-        forceRefresh = false
-      ) => {
-        try {
-          if (forceRefresh) {
-            setRefreshing(true);
-          } else {
-            setLoading(true);
-          }
+  const loadProducts = useCallback(
+    async (
+      forceRefresh = false
+    ) => {
+      const requestId =
+        ++requestSequence.current;
 
-          setLoadError("");
+      try {
+        if (forceRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-          const query =
-            buildQuery();
+        setLoadError("");
 
-          const result =
-            forceRefresh
-              ? await refreshProducts(
-                  query
-                )
-              : await getProducts(
-                  query
-                );
+        const query = buildQuery();
 
-          setProducts(
-            result.products
-          );
+        const result = forceRefresh
+          ? await refreshProducts(query)
+          : await getProducts(query);
 
-          setPagination(
-            result.pagination
-          );
+        if (
+          requestId !==
+          requestSequence.current
+        ) {
+          return null;
+        }
 
-          setCatalog(
-            result.catalog
-          );
+        setProducts(
+          result.products
+        );
 
-          if (forceRefresh) {
-            toast.success(
-              "Rate List refreshed",
-              {
-                description:
-                  `${
-                    result.catalog
-                      ?.sourceTotal ??
-                    result.pagination
-                      .total
-                  } external products loaded.`,
-              }
-            );
-          }
+        setPagination(
+          result.pagination
+        );
 
-          return result;
-        } catch (error) {
-          const message =
-            getProductErrorMessage(
-              error,
-              "Unable to load external product Rate List."
-            );
+        setCatalog(
+          result.catalog
+        );
 
-          setLoadError(
-            message
-          );
-
-          toast.error(
-            "Unable to load products",
+        if (forceRefresh) {
+          toast.success(
+            "Catalogue synchronized",
             {
-              description:
-                message,
+              description: `${
+                result.catalog
+                  ?.sourceTotal ??
+                result.pagination.total
+              } products retrieved.`,
             }
           );
+        }
 
+        return result;
+      } catch (error) {
+        if (
+          requestId !==
+          requestSequence.current
+        ) {
           return null;
-        } finally {
+        }
+
+        const message =
+          getProductErrorMessage(
+            error,
+            "Unable to load products."
+          );
+
+        setLoadError(message);
+
+        toast.error(
+          "Unable to load products",
+          {
+            description: message,
+          }
+        );
+
+        return null;
+      } finally {
+        if (
+          requestId ===
+          requestSequence.current
+        ) {
           setLoading(false);
           setRefreshing(false);
         }
-      },
-      [buildQuery]
-    );
+      }
+    },
+    [buildQuery]
+  );
 
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
 
   /* =======================================================
-     LOAD ACTIVE + VERIFIED SUPPLIERS
+     LOAD VERIFIED SUPPLIERS
   ======================================================= */
 
-  const loadSuppliers =
-    useCallback(async () => {
+  const loadSuppliers = useCallback(
+    async () => {
       try {
-        setSuppliersLoading(
-          true
-        );
+        setSuppliersLoading(true);
 
         const response =
           await api.get<SupplierApiEnvelope>(
@@ -919,13 +846,10 @@ export default function ProductsList() {
             }
           );
 
-        const rows =
+        const eligible =
           extractSuppliers(
             response.data
-          );
-
-        const eligible =
-          rows
+          )
             .filter(
               (supplier) =>
                 supplier.status ===
@@ -933,25 +857,28 @@ export default function ProductsList() {
                 supplier.verificationStatus ===
                   "verified"
             )
-            .sort(
-              (first, second) =>
-                first.companyName.localeCompare(
-                  second.companyName
-                )
+            .sort((a, b) =>
+              a.companyName.localeCompare(
+                b.companyName
+              )
             );
 
         setSuppliers(
           eligible
         );
       } catch (error) {
-        console.error(error);
+        console.error(
+          "Supplier loading failed:",
+          error
+        );
+
         setSuppliers([]);
       } finally {
-        setSuppliersLoading(
-          false
-        );
+        setSuppliersLoading(false);
       }
-    }, []);
+    },
+    []
+  );
 
   useEffect(() => {
     void loadSuppliers();
@@ -961,170 +888,137 @@ export default function ProductsList() {
      FILTER OPTIONS
   ======================================================= */
 
-  const categoryOptions =
-    useMemo(() => {
-      const catalogNames =
-        getCatalogNames(
-          catalog?.categories
-        );
+  const categoryOptions = useMemo(
+    () => {
+      const names = Array.from(
+        new Set([
+          ...getCatalogNames(
+            catalog?.categories
+          ),
 
-      const fallbackNames =
-        products
-          .map((product) =>
-            getProductCategoryName(
-              product
-            ).trim()
-          )
-          .filter(Boolean);
-
-      const values =
-        Array.from(
-          new Set([
-            ...catalogNames,
-            ...fallbackNames,
-            ...(category !== "All"
-              ? [category]
-              : []),
-          ])
-        ).sort(
-          (first, second) =>
-            first.localeCompare(
-              second
+          ...products
+            .map((product) =>
+              getProductCategoryName(
+                product
+              ).trim()
             )
-        );
+            .filter(Boolean),
+
+          ...(category !== "All"
+            ? [category]
+            : []),
+        ])
+      ).sort((a, b) =>
+        a.localeCompare(b)
+      );
 
       return [
         {
           value: "All",
-          label: "All Category",
+          label: "All Categories",
         },
-        ...values.map(
-          (value) => ({
-            value,
-            label: value,
-          })
-        ),
+        ...names.map((name) => ({
+          value: name,
+          label: name,
+        })),
       ];
-    }, [
+    },
+    [
       catalog,
       products,
       category,
-    ]);
+    ]
+  );
 
-  const brandOptions =
-    useMemo(() => {
-      const catalogNames =
-        getCatalogNames(
-          catalog?.brands
-        );
+  const brandOptions = useMemo(
+    () => {
+      const names = Array.from(
+        new Set([
+          ...getCatalogNames(
+            catalog?.brands
+          ),
 
-      const fallbackNames =
-        products
-          .map((product) =>
-            getProductBrandName(
-              product
-            ).trim()
-          )
-          .filter(Boolean);
-
-      const values =
-        Array.from(
-          new Set([
-            ...catalogNames,
-            ...fallbackNames,
-            ...(brand !== "All"
-              ? [brand]
-              : []),
-          ])
-        ).sort(
-          (first, second) =>
-            first.localeCompare(
-              second
+          ...products
+            .map((product) =>
+              getProductBrandName(
+                product
+              ).trim()
             )
-        );
+            .filter(Boolean),
+
+          ...(brand !== "All"
+            ? [brand]
+            : []),
+        ])
+      ).sort((a, b) =>
+        a.localeCompare(b)
+      );
 
       return [
         {
           value: "All",
-          label: "All Brand",
+          label: "All Brands",
         },
-        ...values.map(
-          (value) => ({
-            value,
-            label: value,
-          })
-        ),
+        ...names.map((name) => ({
+          value: name,
+          label: name,
+        })),
       ];
-    }, [
+    },
+    [
       catalog,
       products,
       brand,
-    ]);
+    ]
+  );
 
-  const typeOptions =
-    useMemo(() => {
+  const typeOptions = useMemo(
+    () => {
       const catalogTypes =
         Array.isArray(
           catalog?.types
         )
           ? catalog.types
-              .map((item) =>
-                String(
-                  item || ""
-                ).trim()
-              )
-              .filter(Boolean)
           : [];
 
-      const fallbackTypes =
-        products
-          .map((product) =>
-            String(
-              product.type || ""
-            ).trim()
-          )
-          .filter(Boolean);
+      const values = Array.from(
+        new Set([
+          ...catalogTypes,
 
-      const values =
-        Array.from(
-          new Set([
-            ...catalogTypes,
-            ...fallbackTypes,
-            ...(type !== "All"
-              ? [type]
-              : []),
-          ])
-        ).sort(
-          (first, second) =>
-            first.localeCompare(
-              second
+          ...products
+            .map((product) =>
+              String(
+                product.type || ""
+              ).trim()
             )
-        );
+            .filter(Boolean),
+
+          ...(productType !== "All"
+            ? [productType]
+            : []),
+        ])
+      ).sort((a, b) =>
+        a.localeCompare(b)
+      );
 
       return [
         {
           value: "All",
-          label: "All Type",
+          label: "All Types",
         },
-        ...values.map(
-          (value) => ({
-            value,
-            label:
-              formatProductType(
-                value
-              ),
-          })
-        ),
+        ...values.map((value) => ({
+          value,
+          label:
+            formatProductType(value),
+        })),
       ];
-    }, [
+    },
+    [
       catalog,
       products,
-      type,
-    ]);
-
-  /* =======================================================
-     FILTER UPDATE HELPERS
-  ======================================================= */
+      productType,
+    ]
+  );
 
   const updateCategory = (
     value: string
@@ -1143,7 +1037,7 @@ export default function ProductsList() {
   const updateType = (
     value: string
   ) => {
-    setType(value);
+    setProductType(value);
     setPage(1);
   };
 
@@ -1168,7 +1062,7 @@ export default function ProductsList() {
   };
 
   /* =======================================================
-     OPEN MARKETPLACE ACCESS
+     SUPPLIER ACCESS
   ======================================================= */
 
   const openManageProduct = (
@@ -1178,9 +1072,7 @@ export default function ProductsList() {
       product
     );
 
-    setSelectedSupplierId(
-      ""
-    );
+    setSelectedSupplierId("");
   };
 
   const updateManageProductFromResult = (
@@ -1210,154 +1102,122 @@ export default function ProductsList() {
     }
   };
 
-  /* =======================================================
-     ENABLE PRODUCT
-  ======================================================= */
+  const handleEnableProduct = async () => {
+    if (
+      !manageProduct ||
+      !selectedSupplierId ||
+      marketplaceAction
+    ) {
+      return;
+    }
 
-  const handleEnableProduct =
-    async () => {
-      if (
-        !manageProduct ||
-        !selectedSupplierId
-      ) {
-        toast.error(
-          "Select a supplier first"
+    const productId =
+      manageProduct.externalProductId ||
+      manageProduct.id;
+
+    const actionKey =
+      `enable:${productId}:${selectedSupplierId}`;
+
+    try {
+      setMarketplaceAction(
+        actionKey
+      );
+
+      await enableProductForSupplier(
+        productId,
+        selectedSupplierId
+      );
+
+      toast.success(
+        "Supplier access enabled"
+      );
+
+      const result =
+        await loadProducts();
+
+      if (result) {
+        updateManageProductFromResult(
+          result.products
         );
-
-        return;
       }
-
-      const productId =
-        manageProduct.externalProductId ||
-        manageProduct.id;
-
-      const actionKey =
-        `enable:${productId}:${selectedSupplierId}`;
-
-      if (marketplaceAction) {
-        return;
-      }
-
-      try {
-        setMarketplaceAction(
-          actionKey
-        );
-
-        await enableProductForSupplier(
-          productId,
-          selectedSupplierId
-        );
-
-        toast.success(
-          "Product enabled",
-          {
-            description:
-              `${manageProduct.name} has been enabled for the selected supplier.`,
-          }
-        );
-
-        const result =
-          await loadProducts();
-
-        if (result) {
-          updateManageProductFromResult(
-            result.products
-          );
+    } catch (error) {
+      toast.error(
+        "Unable to enable supplier",
+        {
+          description:
+            getProductErrorMessage(
+              error,
+              "Request failed."
+            ),
         }
-      } catch (error) {
-        toast.error(
-          "Unable to enable product",
-          {
-            description:
-              getProductErrorMessage(
-                error,
-                "Product could not be enabled for this supplier."
-              ),
-          }
-        );
-      } finally {
-        setMarketplaceAction(
-          null
+      );
+    } finally {
+      setMarketplaceAction(null);
+    }
+  };
+
+  const handleDisableProduct = async (
+    supplierId: string
+  ) => {
+    if (
+      !manageProduct ||
+      !supplierId ||
+      marketplaceAction
+    ) {
+      return;
+    }
+
+    const productId =
+      manageProduct.externalProductId ||
+      manageProduct.id;
+
+    const actionKey =
+      `disable:${productId}:${supplierId}`;
+
+    try {
+      setMarketplaceAction(
+        actionKey
+      );
+
+      await disableProductForSupplier(
+        productId,
+        supplierId
+      );
+
+      toast.success(
+        "Supplier access disabled"
+      );
+
+      const result =
+        await loadProducts();
+
+      if (result) {
+        updateManageProductFromResult(
+          result.products
         );
       }
-    };
-
-  /* =======================================================
-     DISABLE PRODUCT
-  ======================================================= */
-
-  const handleDisableProduct =
-    async (
-      supplierId: string
-    ) => {
-      if (
-        !manageProduct ||
-        !supplierId
-      ) {
-        return;
-      }
-
-      const productId =
-        manageProduct.externalProductId ||
-        manageProduct.id;
-
-      const actionKey =
-        `disable:${productId}:${supplierId}`;
-
-      if (marketplaceAction) {
-        return;
-      }
-
-      try {
-        setMarketplaceAction(
-          actionKey
-        );
-
-        await disableProductForSupplier(
-          productId,
-          supplierId
-        );
-
-        toast.success(
-          "Product disabled",
-          {
-            description:
-              `${manageProduct.name} has been disabled for ${supplierId}.`,
-          }
-        );
-
-        const result =
-          await loadProducts();
-
-        if (result) {
-          updateManageProductFromResult(
-            result.products
-          );
+    } catch (error) {
+      toast.error(
+        "Unable to disable supplier",
+        {
+          description:
+            getProductErrorMessage(
+              error,
+              "Request failed."
+            ),
         }
-      } catch (error) {
-        toast.error(
-          "Unable to disable product",
-          {
-            description:
-              getProductErrorMessage(
-                error,
-                "Product could not be disabled."
-              ),
-          }
-        );
-      } finally {
-        setMarketplaceAction(
-          null
-        );
-      }
-    };
+      );
+    } finally {
+      setMarketplaceAction(null);
+    }
+  };
 
   /* =======================================================
-     PAGE NUMBERS
+     PAGINATION
   ======================================================= */
 
-  const pageNumbers =
-    useMemo(() => {
+  const pageNumbers = useMemo(
+    () => {
       const totalPages =
         pagination.totalPages;
 
@@ -1365,49 +1225,48 @@ export default function ProductsList() {
         return [];
       }
 
-      const start =
-        Math.max(
-          1,
-          page - 2
-        );
+      const start = Math.max(
+        1,
+        page - 2
+      );
 
-      const end =
-        Math.min(
-          totalPages,
-          start + 4
-        );
+      const end = Math.min(
+        totalPages,
+        start + 4
+      );
 
-      const adjustedStart =
-        Math.max(
-          1,
-          end - 4
-        );
+      const adjustedStart = Math.max(
+        1,
+        end - 4
+      );
 
-      const result:
-        number[] = [];
+      const numbers: number[] = [];
 
       for (
-        let current =
-          adjustedStart;
-        current <= end;
-        current += 1
+        let number = adjustedStart;
+        number <= end;
+        number += 1
       ) {
-        result.push(
-          current
-        );
+        numbers.push(number);
       }
 
-      return result;
-    }, [
+      return numbers;
+    },
+    [
       page,
       pagination.totalPages,
-    ]);
+    ]
+  );
+
+  /* =======================================================
+     PAGE
+  ======================================================= */
 
   return (
     <>
       <PageMeta
-        title="Product Rate List | Solar Trade Hub"
-        description="Solar Trade Hub external product Rate List"
+        title="Product Catalogue | Solar Trade Hub"
+        description="External product catalogue"
       />
 
       <PageBreadcrumb
@@ -1421,23 +1280,16 @@ export default function ProductsList() {
       />
 
       <div className="space-y-4">
+        {/* HEADER */}
+
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Product Rate List
-              </h1>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Product Catalogue
+            </h1>
 
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-600 dark:text-green-400">
-                <span className="size-1.5 rounded-full bg-green-500" />
-                Live Catalog
-              </span>
-            </div>
-
-            <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-              Products are managed by the external Rate List provider.
-              Solar Trade Hub controls supplier marketplace access without
-              modifying the external product master.
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              External products and supplier access.
             </p>
           </div>
 
@@ -1447,10 +1299,10 @@ export default function ProductsList() {
               void loadProducts(true)
             }
             disabled={
-              refreshing ||
-              loading
+              loading ||
+              refreshing
             }
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/[0.04]"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-transparent dark:text-gray-300"
           >
             <RefreshCw
               className={`size-4 ${
@@ -1461,40 +1313,40 @@ export default function ProductsList() {
             />
 
             {refreshing
-              ? "Refreshing..."
-              : "Refresh Rate List"}
+              ? "Synchronizing..."
+              : "Sync Catalogue"}
           </button>
         </div>
 
+        {/* SUMMARY */}
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <SummaryCard
-            label="Catalog Products"
+            label="Total Products"
             value={
               catalog?.sourceTotal ??
               pagination.total
             }
-            description="External Rate List"
           />
 
           <SummaryCard
-            label="Filtered Results"
+            label="Results"
             value={
               pagination.total
             }
-            description="Current search & filters"
           />
 
           <SummaryCard
-            label="Current Page"
+            label="Page"
             value={
-              pagination.totalPages >
-              0
+              pagination.totalPages > 0
                 ? `${page} / ${pagination.totalPages}`
                 : "0 / 0"
             }
-            description={`${limit} products per page`}
           />
         </div>
+
+        {/* FILTERS */}
 
         <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -1509,87 +1361,70 @@ export default function ProductsList() {
                     event.target.value
                   )
                 }
-                placeholder="Search product, SKU, brand..."
-                className="h-10 w-full rounded-lg border border-gray-200 bg-transparent pl-10 pr-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#ff4b1f] dark:border-gray-700 dark:text-white"
+                placeholder="Search products..."
+                aria-label="Search products"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-transparent pl-10 pr-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-[#ff4b1f] dark:border-gray-700 dark:text-white"
               />
             </div>
 
             <FilterSelect
-              value={category}
-              onChange={
-                updateCategory
-              }
-              options={
-                categoryOptions
-              }
               label="Category"
+              value={category}
+              onChange={updateCategory}
+              options={categoryOptions}
             />
 
             <FilterSelect
-              value={brand}
-              onChange={
-                updateBrand
-              }
-              options={
-                brandOptions
-              }
               label="Brand"
+              value={brand}
+              onChange={updateBrand}
+              options={brandOptions}
             />
 
             <FilterSelect
-              value={type}
-              onChange={
-                updateType
-              }
-              options={
-                typeOptions
-              }
               label="Type"
+              value={productType}
+              onChange={updateType}
+              options={typeOptions}
             />
 
             <FilterSelect
-              value={availability}
-              onChange={
-                updateAvailability
-              }
-              options={
-                AVAILABILITY_OPTIONS
-              }
               label="Availability"
+              value={availability}
+              onChange={updateAvailability}
+              options={AVAILABILITY_OPTIONS}
             />
 
             <FilterSelect
-              value={marketplace}
-              onChange={
-                updateMarketplace
-              }
-              options={
-                MARKETPLACE_OPTIONS
-              }
               label="Marketplace"
+              value={marketplace}
+              onChange={updateMarketplace}
+              options={MARKETPLACE_OPTIONS}
             />
           </div>
         </section>
 
+        {/* PRODUCTS TABLE */}
+
         <section className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
+          <div className="flex flex-col gap-2 border-b border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
             <div>
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Rate List Products
+                Products
               </h2>
 
               <p className="mt-1 text-xs text-gray-500">
                 {loading
-                  ? "Loading products..."
+                  ? "Loading..."
                   : `${pagination.total.toLocaleString(
                       "en-PK"
-                    )} matching products`}
+                    )} results`}
               </p>
             </div>
 
             {catalog?.fetchedAt && (
               <p className="text-xs text-gray-400">
-                Synced{" "}
+                Last synced:{" "}
                 {formatDateTime(
                   catalog.fetchedAt
                 )}
@@ -1601,39 +1436,23 @@ export default function ProductsList() {
             <table className="w-full min-w-[1500px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50/70 dark:border-gray-800 dark:bg-white/[0.02]">
-                  <TableHeading>
-                    Product
-                  </TableHeading>
-                  <TableHeading>
-                    SKU
-                  </TableHeading>
-                  <TableHeading>
-                    Type
-                  </TableHeading>
-                  <TableHeading>
-                    Category
-                  </TableHeading>
-                  <TableHeading>
-                    Brand
-                  </TableHeading>
-                  <TableHeading>
-                    Size
-                  </TableHeading>
-                  <TableHeading>
-                    Unit
-                  </TableHeading>
-                  <TableHeading>
-                    Rate
-                  </TableHeading>
-                  <TableHeading>
-                    Change
-                  </TableHeading>
-                  <TableHeading>
-                    Availability
-                  </TableHeading>
-                  <TableHeading>
-                    Marketplace
-                  </TableHeading>
+                  {[
+                    "Product",
+                    "SKU",
+                    "Type",
+                    "Category",
+                    "Brand",
+                    "Size",
+                    "Unit",
+                    "Rate",
+                    "Change",
+                    "Availability",
+                    "Marketplace",
+                  ].map((heading) => (
+                    <TableHeading key={heading}>
+                      {heading}
+                    </TableHeading>
+                  ))}
 
                   <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                     Actions
@@ -1661,9 +1480,7 @@ export default function ProductsList() {
                         className="px-6 py-14"
                       >
                         <ErrorState
-                          message={
-                            loadError
-                          }
+                          message={loadError}
                           onRetry={() =>
                             void loadProducts()
                           }
@@ -1680,16 +1497,6 @@ export default function ProductsList() {
                         product.externalProductId ||
                         product.id;
 
-                      const categoryName =
-                        getProductCategoryName(
-                          product
-                        ) || "—";
-
-                      const brandName =
-                        getProductBrandName(
-                          product
-                        ) || "—";
-
                       const accesses =
                         getMarketplaceAccesses(
                           product
@@ -1697,17 +1504,13 @@ export default function ProductsList() {
 
                       return (
                         <tr
-                          key={
-                            externalId
-                          }
+                          key={externalId}
                           className="border-b border-gray-100 transition last:border-0 hover:bg-gray-50/70 dark:border-gray-800 dark:hover:bg-white/[0.02]"
                         >
                           <td className="px-4 py-3">
                             <div className="flex min-w-[290px] items-center gap-3">
                               <ProductThumbnail
-                                product={
-                                  product
-                                }
+                                product={product}
                               />
 
                               <div className="min-w-0">
@@ -1715,7 +1518,7 @@ export default function ProductsList() {
                                   to={`/products/${encodeURIComponent(
                                     externalId
                                   )}`}
-                                  className="line-clamp-2 text-sm font-semibold text-gray-900 transition hover:text-[#ff4b1f] dark:text-white"
+                                  className="line-clamp-2 text-sm font-semibold text-gray-900 hover:text-[#ff4b1f] dark:text-white"
                                 >
                                   {product.name ||
                                     "Unnamed Product"}
@@ -1728,32 +1531,29 @@ export default function ProductsList() {
                             </div>
                           </td>
 
-                          <td className="max-w-[220px] px-4 py-3">
-                            {product.sku ? (
-                              <span className="break-all font-mono text-xs text-gray-600 dark:text-gray-300">
-                                {product.sku}
-                              </span>
-                            ) : (
-                              <span className="text-sm text-gray-400">
-                                —
-                              </span>
-                            )}
+                          <td className="max-w-[220px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                            {product.sku ||
+                              "—"}
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3">
-                            <ExternalTypeBadge
+                            <TypeBadge
                               value={
                                 product.type
                               }
                             />
                           </td>
 
-                          <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                            {categoryName}
+                          <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                            {getProductCategoryName(
+                              product
+                            ) || "—"}
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                            {brandName}
+                            {getProductBrandName(
+                              product
+                            ) || "—"}
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
@@ -1768,11 +1568,11 @@ export default function ProductsList() {
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3">
-                            <p className="text-sm font-bold text-gray-900 dark:text-white">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
                               {formatProductRate(
                                 product.rate
                               )}
-                            </p>
+                            </span>
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3">
@@ -1818,7 +1618,8 @@ export default function ProductsList() {
 
                               <button
                                 type="button"
-                                title="Marketplace Access"
+                                title="Supplier Access"
+                                aria-label={`Manage supplier access for ${product.name}`}
                                 onClick={() =>
                                   openManageProduct(
                                     product
@@ -1837,8 +1638,7 @@ export default function ProductsList() {
 
                 {!loading &&
                   !loadError &&
-                  products.length ===
-                    0 && (
+                  products.length === 0 && (
                     <tr>
                       <td
                         colSpan={12}
@@ -1851,7 +1651,9 @@ export default function ProductsList() {
               </tbody>
             </table>
           </div>
-                    {/* PAGINATION */}
+
+          {/* PAGINATION */}
+
           {!loading &&
             !loadError &&
             pagination.total > 0 && (
@@ -1859,39 +1661,47 @@ export default function ProductsList() {
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-xs text-gray-500">
                     Showing{" "}
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">
-                      {Math.min(
-                        (page - 1) * limit + 1,
-                        pagination.total
-                      )}
-                    </span>
-                    {" - "}
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">
-                      {Math.min(
-                        page * limit,
-                        pagination.total
-                      )}
-                    </span>{" "}
+                    {Math.min(
+                      (page - 1) *
+                        limit +
+                        1,
+                      pagination.total
+                    )}
+                    {"–"}
+                    {Math.min(
+                      page * limit,
+                      pagination.total
+                    )}{" "}
                     of{" "}
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">
-                      {pagination.total.toLocaleString("en-PK")}
-                    </span>
+                    {pagination.total.toLocaleString(
+                      "en-PK"
+                    )}
                   </p>
 
                   <div className="relative">
                     <select
                       value={limit}
                       onChange={(event) => {
-                        setLimit(Number(event.target.value));
+                        setLimit(
+                          Number(
+                            event.target.value
+                          )
+                        );
                         setPage(1);
                       }}
+                      aria-label="Products per page"
                       className="h-9 appearance-none rounded-lg border border-gray-200 bg-transparent pl-3 pr-8 text-xs font-medium text-gray-600 outline-none focus:border-[#ff4b1f] dark:border-gray-700 dark:bg-[#101828] dark:text-gray-300"
                     >
-                      {PAGE_SIZE_OPTIONS.map((size) => (
-                        <option key={size} value={size}>
-                          {size} / page
-                        </option>
-                      ))}
+                      {PAGE_SIZE_OPTIONS.map(
+                        (size) => (
+                          <option
+                            key={size}
+                            value={size}
+                          >
+                            {size} / page
+                          </option>
+                        )
+                      )}
                     </select>
 
                     <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
@@ -1901,67 +1711,99 @@ export default function ProductsList() {
                 {pagination.totalPages > 1 && (
                   <div className="flex flex-wrap items-center gap-1">
                     <PaginationButton
-                      disabled={!pagination.hasPreviousPage || page <= 1}
+                      disabled={
+                        !pagination.hasPreviousPage ||
+                        page <= 1
+                      }
                       onClick={() =>
-                        setPage((current) => Math.max(1, current - 1))
+                        setPage((current) =>
+                          Math.max(
+                            1,
+                            current - 1
+                          )
+                        )
                       }
                       title="Previous page"
                     >
                       <ChevronLeft className="size-4" />
                     </PaginationButton>
 
-                    {pageNumbers[0] > 1 && (
-                      <>
+                    {pageNumbers.length > 0 &&
+                      pageNumbers[0] > 1 && (
+                        <>
+                          <PaginationNumber
+                            active={page === 1}
+                            onClick={() =>
+                              setPage(1)
+                            }
+                          >
+                            1
+                          </PaginationNumber>
+
+                          {pageNumbers[0] > 2 && (
+                            <span className="px-1 text-xs text-gray-400">
+                              …
+                            </span>
+                          )}
+                        </>
+                      )}
+
+                    {pageNumbers.map(
+                      (pageNumber) => (
                         <PaginationNumber
-                          active={page === 1}
-                          onClick={() => setPage(1)}
-                        >
-                          1
-                        </PaginationNumber>
-
-                        {pageNumbers[0] > 2 && (
-                          <span className="px-1 text-xs text-gray-400">
-                            …
-                          </span>
-                        )}
-                      </>
-                    )}
-
-                    {pageNumbers.map((pageNumber) => (
-                      <PaginationNumber
-                        key={pageNumber}
-                        active={pageNumber === page}
-                        onClick={() => setPage(pageNumber)}
-                      >
-                        {pageNumber}
-                      </PaginationNumber>
-                    ))}
-
-                    {pageNumbers[pageNumbers.length - 1] <
-                      pagination.totalPages && (
-                      <>
-                        {pageNumbers[pageNumbers.length - 1] <
-                          pagination.totalPages - 1 && (
-                          <span className="px-1 text-xs text-gray-400">
-                            …
-                          </span>
-                        )}
-
-                        <PaginationNumber
-                          active={page === pagination.totalPages}
+                          key={pageNumber}
+                          active={
+                            pageNumber ===
+                            page
+                          }
                           onClick={() =>
-                            setPage(pagination.totalPages)
+                            setPage(
+                              pageNumber
+                            )
                           }
                         >
-                          {pagination.totalPages}
+                          {pageNumber}
                         </PaginationNumber>
-                      </>
+                      )
                     )}
+
+                    {pageNumbers.length > 0 &&
+                      pageNumbers[
+                        pageNumbers.length - 1
+                      ] <
+                        pagination.totalPages && (
+                        <>
+                          {pageNumbers[
+                            pageNumbers.length - 1
+                          ] <
+                            pagination.totalPages -
+                              1 && (
+                            <span className="px-1 text-xs text-gray-400">
+                              …
+                            </span>
+                          )}
+
+                          <PaginationNumber
+                            active={
+                              page ===
+                              pagination.totalPages
+                            }
+                            onClick={() =>
+                              setPage(
+                                pagination.totalPages
+                              )
+                            }
+                          >
+                            {pagination.totalPages}
+                          </PaginationNumber>
+                        </>
+                      )}
 
                     <PaginationButton
                       disabled={
                         !pagination.hasNextPage ||
-                        page >= pagination.totalPages
+                        page >=
+                          pagination.totalPages
                       }
                       onClick={() =>
                         setPage((current) =>
@@ -1982,17 +1824,31 @@ export default function ProductsList() {
         </section>
       </div>
 
+      {/* SUPPLIER ACCESS MODAL */}
+
       {manageProduct && (
         <MarketplaceModal
           product={manageProduct}
           suppliers={suppliers}
-          suppliersLoading={suppliersLoading}
-          selectedSupplierId={selectedSupplierId}
-          setSelectedSupplierId={setSelectedSupplierId}
-          marketplaceAction={marketplaceAction}
-          onEnable={() => void handleEnableProduct()}
+          suppliersLoading={
+            suppliersLoading
+          }
+          selectedSupplierId={
+            selectedSupplierId
+          }
+          setSelectedSupplierId={
+            setSelectedSupplierId
+          }
+          marketplaceAction={
+            marketplaceAction
+          }
+          onEnable={() =>
+            void handleEnableProduct()
+          }
           onDisable={(supplierId) =>
-            void handleDisableProduct(supplierId)
+            void handleDisableProduct(
+              supplierId
+            )
           }
           onClose={() => {
             if (marketplaceAction) {
@@ -2009,7 +1865,7 @@ export default function ProductsList() {
 }
 
 /* =========================================================
-   MARKETPLACE ACCESS MODAL
+   SUPPLIER ACCESS MODAL
 ========================================================= */
 
 function MarketplaceModal({
@@ -2027,40 +1883,62 @@ function MarketplaceModal({
   suppliers: SupplierOption[];
   suppliersLoading: boolean;
   selectedSupplierId: string;
-  setSelectedSupplierId: (value: string) => void;
+  setSelectedSupplierId:
+    (value: string) => void;
   marketplaceAction: string | null;
   onEnable: () => void;
-  onDisable: (supplierId: string) => void;
+  onDisable: (
+    supplierId: string
+  ) => void;
   onClose: () => void;
 }) {
-  const accesses = getMarketplaceAccesses(product);
+  const accesses =
+    getMarketplaceAccesses(
+      product
+    );
 
-  const activeAccesses = accesses.filter(
-    (access) => access.enabled
-  );
+  const activeAccesses =
+    accesses.filter(
+      (access) => access.enabled
+    );
 
-  const selectedAccess = accesses.find(
-    (access) => access.supplierId === selectedSupplierId
-  );
+  const selectedAccess =
+    accesses.find(
+      (access) =>
+        access.supplierId ===
+        selectedSupplierId
+    );
 
-  const selectedAlreadyEnabled = selectedAccess?.enabled === true;
+  const selectedAlreadyEnabled =
+    selectedAccess?.enabled === true;
 
-  const productId = product.externalProductId || product.id;
+  const productId =
+    product.externalProductId ||
+    product.id;
 
   const enableActionKey =
     `enable:${productId}:${selectedSupplierId}`;
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Supplier Access"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+    >
       <button
         type="button"
-        aria-label="Close marketplace access"
-        disabled={Boolean(marketplaceAction)}
+        aria-label="Close supplier access"
+        disabled={
+          Boolean(marketplaceAction)
+        }
         onClick={onClose}
         className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
       />
 
       <div className="relative z-10 flex max-h-[92vh] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#101828]">
+        {/* HEADER */}
+
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-gray-800">
           <div className="flex min-w-0 items-center gap-3">
             <ProductThumbnail
@@ -2069,20 +1947,12 @@ function MarketplaceModal({
             />
 
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-lg font-semibold text-gray-900 dark:text-white">
-                  Marketplace Access
-                </h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Supplier Access
+              </h3>
 
-                <MarketplaceBadge
-                  enabled={product.marketplaceEnabled}
-                  visible={product.marketplaceVisible}
-                  supplierCount={accesses.length}
-                />
-              </div>
-
-              <p className="mt-1 line-clamp-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-                {product.name || "Unnamed Product"}
+              <p className="mt-1 line-clamp-1 text-sm text-gray-600 dark:text-gray-300">
+                {product.name}
               </p>
 
               <p className="mt-0.5 truncate font-mono text-[10px] text-gray-400">
@@ -2093,74 +1963,96 @@ function MarketplaceModal({
 
           <button
             type="button"
+            aria-label="Close"
+            disabled={
+              Boolean(marketplaceAction)
+            }
             onClick={onClose}
-            disabled={Boolean(marketplaceAction)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:hover:bg-white/[0.05] dark:hover:text-white"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 dark:hover:bg-white/[0.05]"
           >
             <X className="size-5" />
           </button>
         </div>
 
+        {/* CONTENT */}
+
         <div className="overflow-y-auto">
           <div className="grid grid-cols-1 gap-3 border-b border-gray-200 p-6 sm:grid-cols-3 dark:border-gray-800">
             <MiniInfoCard
-              label="External Rate"
-              value={formatProductRate(product.rate)}
+              label="Rate"
+              value={formatProductRate(
+                product.rate
+              )}
             />
 
             <MiniInfoCard
               label="Availability"
-              value={product.available ? "Available" : "Unavailable"}
+              value={
+                product.available
+                  ? "Available"
+                  : "Unavailable"
+              }
             />
 
             <MiniInfoCard
               label="Enabled Suppliers"
-              value={String(activeAccesses.length)}
+              value={
+                activeAccesses.length
+              }
             />
           </div>
+
+          {/* ENABLE */}
 
           <div className="border-b border-gray-200 p-6 dark:border-gray-800">
             <div className="flex items-center gap-2">
               <Power className="size-4 text-[#5b2eff]" />
 
               <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Enable for Supplier
+                Enable Supplier
               </h4>
             </div>
-
-            <p className="mt-1 text-xs leading-5 text-gray-500">
-              Select an eligible supplier to enable this external
-              catalogue product for that supplier. Final eligibility is
-              validated by the backend.
-            </p>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <div className="relative flex-1">
                 <select
-                  value={selectedSupplierId}
+                  value={
+                    selectedSupplierId
+                  }
                   disabled={
                     suppliersLoading ||
-                    Boolean(marketplaceAction)
+                    Boolean(
+                      marketplaceAction
+                    )
                   }
                   onChange={(event) =>
-                    setSelectedSupplierId(event.target.value)
+                    setSelectedSupplierId(
+                      event.target.value
+                    )
                   }
-                  className="h-11 w-full appearance-none rounded-lg border border-gray-200 bg-transparent px-3 pr-9 text-sm text-gray-700 outline-none transition focus:border-[#5b2eff] disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#111827] dark:text-gray-300"
+                  className="h-11 w-full appearance-none rounded-lg border border-gray-200 bg-transparent px-3 pr-9 text-sm text-gray-700 outline-none focus:border-[#5b2eff] disabled:opacity-60 dark:border-gray-700 dark:bg-[#111827] dark:text-gray-300"
                 >
                   <option value="">
                     {suppliersLoading
                       ? "Loading suppliers..."
-                      : "Select supplier"}
+                      : "Select Supplier"}
                   </option>
 
-                  {suppliers.map((supplier) => (
-                    <option
-                      key={supplier.supplierId}
-                      value={supplier.supplierId}
-                    >
-                      {supplier.companyName} ({supplier.supplierId})
-                    </option>
-                  ))}
+                  {suppliers.map(
+                    (supplier) => (
+                      <option
+                        key={
+                          supplier.supplierId
+                        }
+                        value={
+                          supplier.supplierId
+                        }
+                      >
+                        {supplier.companyName} (
+                        {supplier.supplierId})
+                      </option>
+                    )
+                  )}
                 </select>
 
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -2171,50 +2063,44 @@ function MarketplaceModal({
                 disabled={
                   !selectedSupplierId ||
                   selectedAlreadyEnabled ||
-                  Boolean(marketplaceAction)
+                  Boolean(
+                    marketplaceAction
+                  )
                 }
                 onClick={onEnable}
                 className="inline-flex h-11 min-w-[150px] items-center justify-center gap-2 rounded-lg bg-[#5b2eff] px-5 text-sm font-semibold text-white transition hover:bg-[#4e26e6] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {marketplaceAction === enableActionKey ? (
+                {marketplaceAction ===
+                enableActionKey ? (
                   <LoaderCircle className="size-4 animate-spin" />
                 ) : (
                   <Power className="size-4" />
                 )}
 
                 {selectedAlreadyEnabled
-                  ? "Already Enabled"
-                  : marketplaceAction === enableActionKey
+                  ? "Enabled"
+                  : marketplaceAction ===
+                      enableActionKey
                     ? "Enabling..."
-                    : "Enable Product"}
+                    : "Enable"}
               </button>
             </div>
 
             {!product.available && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                <CircleAlert className="mt-0.5 size-4 shrink-0" />
-
-                <p>
-                  This product is currently unavailable in the
-                  external catalogue. Customer visibility still depends
-                  on external availability and backend marketplace
-                  eligibility.
-                </p>
-              </div>
+              <p className="mt-3 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                <CircleAlert className="size-4 shrink-0" />
+                Product unavailable in the external catalogue.
+              </p>
             )}
           </div>
 
+          {/* SUPPLIER ASSIGNMENTS */}
+
           <div className="p-6">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Supplier Access
-                </h4>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Current supplier access returned for this product.
-                </p>
-              </div>
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Assigned Suppliers
+              </h4>
 
               <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                 {accesses.length}
@@ -2225,215 +2111,143 @@ function MarketplaceModal({
               <div className="mt-4 rounded-xl border border-dashed border-gray-200 px-5 py-8 text-center dark:border-gray-700">
                 <Store className="mx-auto size-6 text-gray-400" />
 
-                <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                  Not enabled for any supplier
-                </p>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Select an eligible supplier above to enable this
-                  product.
+                <p className="mt-2 text-sm text-gray-500">
+                  No suppliers assigned.
                 </p>
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                {accesses.map((access) => {
-                  const supplierId = access.supplierId || "";
+                {accesses.map(
+                  (access) => {
+                    const supplierId =
+                      access.supplierId ||
+                      "";
 
-                  const disableActionKey =
-                    `disable:${productId}:${supplierId}`;
+                    const visible =
+                      access.visible ===
+                        true ||
+                      access.marketplaceVisible ===
+                        true;
 
-                  return (
-                    <div
-                      key={
-                        access.accessId ||
-                        `${supplierId}-${access.companyName || ""}`
-                      }
-                      className="rounded-xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-white/[0.02]"
-                    >
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-gray-900 dark:text-white">
-                              {access.companyName || "Unknown Supplier"}
-                            </p>
+                    const disableActionKey =
+                      `disable:${productId}:${supplierId}`;
 
-                            {access.visible ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400">
-                                <CheckCircle2 className="size-3" />
-                                Live
-                              </span>
-                            ) : access.enabled ? (
-                              <span className="inline-flex rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                                Enabled / Not Live
-                              </span>
-                            ) : (
-                              <span className="inline-flex rounded-full bg-gray-500/10 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
-                                Disabled
-                              </span>
-                            )}
-                          </div>
+                    return (
+                      <div
+                        key={
+                          access.accessId ||
+                          `${supplierId}-${access.companyName}`
+                        }
+                        className="rounded-xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-white/[0.02]"
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-gray-900 dark:text-white">
+                                {access.companyName ||
+                                  "Supplier"}
+                              </p>
 
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
-                            <span>
-                              {supplierId || "No Supplier ID"}
-                            </span>
+                              <AccessStatus
+                                enabled={
+                                  access.enabled ===
+                                  true
+                                }
+                                visible={
+                                  visible
+                                }
+                              />
+                            </div>
 
-                            <span>
-                              Supplier:{" "}
-                              {access.supplierStatus || "—"}
-                            </span>
-
-                            <span>
-                              Verification:{" "}
-                              {access.verificationStatus || "—"}
-                            </span>
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
-                            <span>
-                              Subscription:{" "}
-                              {access.subscriptionActive
-                                ? access.subscription?.planCode || "Active"
-                                : "Inactive"}
-                            </span>
-
-                            {access.subscription?.expiresAt && (
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                               <span>
-                                Expires:{" "}
-                                {formatDate(
-                                  access.subscription.expiresAt
-                                )}
+                                {supplierId ||
+                                  "—"}
                               </span>
-                            )}
+
+                              <span>
+                                Verification:{" "}
+                                {access.verificationStatus ||
+                                  "—"}
+                              </span>
+
+                              <span>
+                                Subscription:{" "}
+                                {access.subscriptionActive
+                                  ? access.subscription
+                                      ?.planCode ||
+                                    "Active"
+                                  : "Inactive"}
+                              </span>
+
+                              {access.subscription
+                                ?.expiresAt && (
+                                <span>
+                                  Expires:{" "}
+                                  {formatDate(
+                                    access.subscription
+                                      .expiresAt
+                                  )}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        {access.enabled && supplierId && (
-                          <button
-                            type="button"
-                            disabled={Boolean(marketplaceAction)}
-                            onClick={() => onDisable(supplierId)}
-                            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/20 dark:hover:bg-red-500/10"
-                          >
-                            {marketplaceAction === disableActionKey ? (
-                              <LoaderCircle className="size-3.5 animate-spin" />
-                            ) : (
-                              <PowerOff className="size-3.5" />
+                          {access.enabled &&
+                            supplierId && (
+                              <button
+                                type="button"
+                                disabled={
+                                  Boolean(
+                                    marketplaceAction
+                                  )
+                                }
+                                onClick={() =>
+                                  onDisable(
+                                    supplierId
+                                  )
+                                }
+                                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-500/20"
+                              >
+                                {marketplaceAction ===
+                                disableActionKey ? (
+                                  <LoaderCircle className="size-3.5 animate-spin" />
+                                ) : (
+                                  <PowerOff className="size-3.5" />
+                                )}
+
+                                {marketplaceAction ===
+                                disableActionKey
+                                  ? "Disabling..."
+                                  : "Disable"}
+                              </button>
                             )}
-
-                            {marketplaceAction === disableActionKey
-                              ? "Disabling..."
-                              : "Disable"}
-                          </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                )}
               </div>
             )}
           </div>
         </div>
 
+        {/* FOOTER */}
+
         <div className="flex justify-end border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-white/[0.02]">
           <button
             type="button"
-            disabled={Boolean(marketplaceAction)}
+            disabled={
+              Boolean(marketplaceAction)
+            }
             onClick={onClose}
-            className="h-10 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-transparent dark:text-gray-300"
+            className="h-10 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-transparent dark:text-gray-300"
           >
             Close
           </button>
         </div>
       </div>
     </div>
-  );
-}
-
-/* =========================================================
-   SUMMARY CARD
-========================================================= */
-
-function SummaryCard({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: ReactNode;
-  description: string;
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-      <p className="text-xs font-medium text-gray-500">
-        {label}
-      </p>
-
-      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
-        {value}
-      </p>
-
-      <p className="mt-1 text-xs text-gray-400">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-/* =========================================================
-   FILTER SELECT
-========================================================= */
-
-function FilterSelect({
-  value,
-  onChange,
-  options,
-  label,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: {
-    value: string;
-    label: string;
-  }[];
-  label: string;
-}) {
-  return (
-    <div className="relative">
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-lg border border-gray-200 bg-transparent px-3 pr-9 text-sm text-gray-700 outline-none transition focus:border-[#ff4b1f] dark:border-gray-700 dark:bg-[#101828] dark:text-gray-300"
-      >
-        {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-          >
-            {option.label}
-          </option>
-        ))}
-      </select>
-
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-    </div>
-  );
-}
-
-/* =========================================================
-   TABLE
-========================================================= */
-
-function TableHeading({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  return (
-    <th className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-      {children}
-    </th>
   );
 }
 
@@ -2449,20 +2263,89 @@ function ProductThumbnail({
   size?: "normal" | "large";
 }) {
   const candidates = useMemo(
-    () => getProductImageCandidates(product),
+    () => getProductImageCandidates(
+      product
+    ),
     [product]
   );
 
-  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [
+    candidateIndex,
+    setCandidateIndex,
+  ] = useState(0);
 
-  useEffect(() => {
-    setCandidateIndex(0);
-  }, [product.id, product.externalProductId]);
+  const imageKey = [
+    product.externalProductId ||
+      product.id,
+    product.imageThumbUrl ||
+      "",
+    product.imageUrl || "",
+  ].join(":");
 
-  const imageUrl = candidates[candidateIndex] || "";
+  const previousImageKey =
+    useRef(imageKey);
+
+  // Reset the candidate index when the product or its
+  // image references change. Avoid a stale thumbnail
+  // during a catalogue refresh.
+  if (
+    previousImageKey.current !==
+    imageKey
+  ) {
+    previousImageKey.current =
+      imageKey;
+
+    if (candidateIndex !== 0) {
+      setCandidateIndex(0);
+    }
+  }
+
+  const imageUrl =
+    candidates[candidateIndex] ||
+    "";
 
   const dimension =
-    size === "large" ? "size-14" : "size-11";
+    size === "large"
+      ? "size-14"
+      : "size-11";
+
+  const handleImageError = () => {
+    if (import.meta.env.DEV) {
+      console.warn(
+        "[Product image failed]",
+        {
+          productId:
+            product.externalProductId ||
+            product.id,
+
+          productName:
+            product.name,
+
+          attemptedUrl:
+            imageUrl,
+
+          nextCandidate:
+            candidates[
+              candidateIndex + 1
+            ] || null,
+
+          imageUrlField:
+            product.imageUrl,
+
+          imageThumbUrlField:
+            product.imageThumbUrl,
+        }
+      );
+    }
+
+    setCandidateIndex(
+      (current) =>
+        Math.min(
+          current + 1,
+          candidates.length
+        )
+    );
+  };
 
   return (
     <div
@@ -2470,54 +2353,146 @@ function ProductThumbnail({
     >
       {imageUrl ? (
         <img
+          key={`${imageKey}-${candidateIndex}`}
           src={imageUrl}
-          alt={product.name || "Product"}
+          alt={
+            product.name ||
+            "Product"
+          }
           loading="lazy"
+          decoding="async"
           className="h-full w-full object-contain p-1"
-          onError={() => {
-            setCandidateIndex((current) => current + 1);
-          }}
+          onError={
+            handleImageError
+          }
         />
       ) : (
-        <PackageOpen className="size-5 text-gray-400" />
+        <PackageOpen
+          className="size-5 text-gray-400"
+          aria-label="Image unavailable"
+        />
       )}
     </div>
   );
 }
 
 /* =========================================================
-   TYPE BADGE
+   SHARED UI
 ========================================================= */
 
-function ExternalTypeBadge({
+function SummaryCard({
+  label,
   value,
 }: {
-  value: string | null | undefined;
+  label: string;
+  value: ReactNode;
 }) {
-  const label = value
-    ? formatProductType(value)
-    : "—";
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+      <p className="text-xs font-medium text-gray-500">
+        {label}
+      </p>
 
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: FilterOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <select
+        aria-label={
+          label
+        }
+        value={
+          value
+        }
+        onChange={(event) =>
+          onChange(
+            event.target.value
+          )
+        }
+        className="h-10 w-full appearance-none rounded-lg border border-gray-200 bg-transparent px-3 pr-9 text-sm text-gray-700 outline-none focus:border-[#ff4b1f] dark:border-gray-700 dark:bg-[#101828] dark:text-gray-300"
+      >
+        {options.map(
+          (option) => (
+            <option
+              key={
+                option.value
+              }
+              value={
+                option.value
+              }
+            >
+              {option.label}
+            </option>
+          )
+        )}
+      </select>
+
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+    </div>
+  );
+}
+
+function TableHeading({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <th className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+      {children}
+    </th>
+  );
+}
+
+function TypeBadge({
+  value,
+}: {
+  value:
+    | string
+    | null
+    | undefined;
+}) {
   return (
     <span className="inline-flex rounded-full bg-[#5b2eff]/10 px-2.5 py-1 text-xs font-semibold text-[#6c48ff] dark:text-[#9d88ff]">
-      {label}
+      {value
+        ? formatProductType(
+            value
+          )
+        : "—"}
     </span>
   );
 }
 
-/* =========================================================
-   RATE CHANGE
-========================================================= */
-
 function RateChangeBadge({
   value,
 }: {
-  value: number | null | undefined;
+  value:
+    | number
+    | null
+    | undefined;
 }) {
   if (
     value === null ||
     value === undefined ||
-    !Number.isFinite(Number(value))
+    !Number.isFinite(
+      Number(value)
+    )
   ) {
     return (
       <span className="text-xs text-gray-400">
@@ -2526,57 +2501,84 @@ function RateChangeBadge({
     );
   }
 
-  const numericValue = Number(value);
+  const number = Number(
+    value
+  );
 
-  if (numericValue === 0) {
+  if (number === 0) {
     return (
-      <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+      <span className="text-xs font-semibold text-gray-500">
         0%
       </span>
     );
   }
 
-  const positive = numericValue > 0;
-
   return (
     <span
       className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-        positive
+        number > 0
           ? "bg-red-500/10 text-red-600 dark:text-red-400"
           : "bg-green-500/10 text-green-600 dark:text-green-400"
       }`}
     >
-      {positive ? "+" : ""}
-      {numericValue.toFixed(2)}%
+      {number > 0
+        ? "+"
+        : ""}
+      {number.toFixed(2)}%
     </span>
   );
 }
-
-/* =========================================================
-   AVAILABILITY
-========================================================= */
 
 function AvailabilityBadge({
   available,
 }: {
   available: boolean;
 }) {
-  return available ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-600 dark:text-green-400">
-      <span className="size-1.5 rounded-full bg-green-500" />
-      Available
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-400">
-      <span className="size-1.5 rounded-full bg-red-500" />
-      Unavailable
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+        available
+          ? "bg-green-500/10 text-green-600 dark:text-green-400"
+          : "bg-red-500/10 text-red-600 dark:text-red-400"
+      }`}
+    >
+      {available
+        ? "Available"
+        : "Unavailable"}
     </span>
   );
 }
 
-/* =========================================================
-   MARKETPLACE BADGE
-========================================================= */
+function AccessStatus({
+  enabled,
+  visible,
+}: {
+  enabled: boolean;
+  visible: boolean;
+}) {
+  if (visible) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-1 text-xs font-semibold text-green-600 dark:text-green-400">
+        <CheckCircle2 className="size-3" />
+        Live
+      </span>
+    );
+  }
+
+  if (enabled) {
+    return (
+      <span className="inline-flex rounded-full bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+        Pending Eligibility
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+      Disabled
+    </span>
+  );
+}
 
 function MarketplaceBadge({
   enabled,
@@ -2587,41 +2589,23 @@ function MarketplaceBadge({
   visible: boolean;
   supplierCount?: number;
 }) {
-  if (visible) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-600 dark:text-green-400">
-        <CheckCircle2 className="size-3.5" />
-        Live
-        {typeof supplierCount === "number" && supplierCount > 0
-          ? ` · ${supplierCount}`
-          : ""}
-      </span>
-    );
-  }
-
-  if (enabled) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
-        <CircleAlert className="size-3.5" />
-        Enabled / Not Live
-        {typeof supplierCount === "number" && supplierCount > 0
-          ? ` · ${supplierCount}`
-          : ""}
-      </span>
-    );
-  }
-
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-      <PowerOff className="size-3.5" />
-      Not Enabled
-    </span>
+    <div className="flex items-center gap-1.5">
+      <AccessStatus
+        enabled={enabled}
+        visible={visible}
+      />
+
+      {typeof supplierCount ===
+        "number" &&
+        supplierCount > 0 && (
+          <span className="text-xs text-gray-400">
+            {supplierCount}
+          </span>
+        )}
+    </div>
   );
 }
-
-/* =========================================================
-   ACTION LINK
-========================================================= */
 
 function ActionLink({
   to,
@@ -2636,16 +2620,13 @@ function ActionLink({
     <Link
       to={to}
       title={title}
+      aria-label={title}
       className="flex size-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-[#ff4b1f]/10 hover:text-[#ff4b1f]"
     >
       {children}
     </Link>
   );
 }
-
-/* =========================================================
-   MINI INFO
-========================================================= */
 
 function MiniInfoCard({
   label,
@@ -2667,10 +2648,6 @@ function MiniInfoCard({
   );
 }
 
-/* =========================================================
-   PAGINATION
-========================================================= */
-
 function PaginationButton({
   children,
   disabled,
@@ -2680,12 +2657,13 @@ function PaginationButton({
   children: ReactNode;
   disabled?: boolean;
   onClick: () => void;
-  title?: string;
+  title: string;
 }) {
   return (
     <button
       type="button"
       title={title}
+      aria-label={title}
       disabled={disabled}
       onClick={onClick}
       className="flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-[#ff4b1f]/40 hover:text-[#ff4b1f] disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-transparent dark:text-gray-400"
@@ -2708,6 +2686,11 @@ function PaginationNumber({
     <button
       type="button"
       onClick={onClick}
+      aria-current={
+        active
+          ? "page"
+          : undefined
+      }
       className={`flex size-9 items-center justify-center rounded-lg border text-xs font-semibold transition ${
         active
           ? "border-[#ff4b1f] bg-[#ff4b1f] text-white"
@@ -2719,21 +2702,13 @@ function PaginationNumber({
   );
 }
 
-/* =========================================================
-   LOADING / ERROR / EMPTY
-========================================================= */
-
 function LoadingState() {
   return (
     <div className="flex flex-col items-center justify-center text-center">
       <LoaderCircle className="size-7 animate-spin text-[#ff4b1f]" />
 
       <p className="mt-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
-        Loading external Rate List
-      </p>
-
-      <p className="mt-1 text-xs text-gray-400">
-        Fetching the latest product catalogue.
+        Loading products...
       </p>
     </div>
   );
@@ -2748,25 +2723,23 @@ function ErrorState({
 }) {
   return (
     <div className="mx-auto max-w-lg text-center">
-      <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-red-500/10">
-        <CircleAlert className="size-5 text-red-500" />
-      </div>
+      <CircleAlert className="mx-auto size-8 text-red-500" />
 
       <p className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">
-        Rate List could not be loaded
+        Unable to load products
       </p>
 
-      <p className="mt-1 text-xs leading-5 text-gray-500">
+      <p className="mt-1 text-xs text-gray-500">
         {message}
       </p>
 
       <button
         type="button"
         onClick={onRetry}
-        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#ff4b1f] px-4 text-xs font-semibold text-white transition hover:bg-[#e94118]"
+        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#ff4b1f] px-4 text-xs font-semibold text-white"
       >
         <RefreshCw className="size-3.5" />
-        Try Again
+        Retry
       </button>
     </div>
   );
@@ -2775,16 +2748,14 @@ function ErrorState({
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center text-center">
-      <div className="flex size-11 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
-        <PackageOpen className="size-5 text-gray-400" />
-      </div>
+      <PackageOpen className="size-8 text-gray-400" />
 
       <p className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">
         No products found
       </p>
 
       <p className="mt-1 text-xs text-gray-500">
-        No external Rate List products match the current filters.
+        Adjust the filters and try again.
       </p>
     </div>
   );
