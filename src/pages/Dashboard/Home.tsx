@@ -1,3 +1,4 @@
+import OperationsOverview from "../../components/operations/OperationsOverview";
 import PageMeta from "../../components/common/PageMeta";
 
 import DashboardWelcome from "../../components/ecommerce/DashboardWelcome";
@@ -21,6 +22,7 @@ export default function Home() {
         <DashboardWelcome />
 
         <MarketplaceMetrics />
+        <OperationsOverview />
 
         <div className="grid grid-cols-12 items-stretch gap-5">
           <div className="col-span-12 xl:col-span-8">

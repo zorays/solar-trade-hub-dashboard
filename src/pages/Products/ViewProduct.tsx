@@ -1,3 +1,4 @@
+import ExternalFreeListingControls from "../../components/operations/ExternalFreeListingControls";
 import {
   useCallback,
   useEffect,
@@ -1201,6 +1202,8 @@ export default function ViewProduct() {
             </div>
           </section>
         )}
+
+        <ExternalFreeListingControls productId={product.externalProductId || productReference} onChanged={async () => { setProduct(await getProduct(productReference)); }} />
 
         {/* MARKETPLACE ACCESS */}
 

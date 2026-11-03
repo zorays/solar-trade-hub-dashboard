@@ -1,3 +1,4 @@
+import { getOrdersReport, type MonthlyOrderData } from "../../services/reports/report.service";
 import {
   useEffect,
   useMemo,
@@ -295,6 +296,16 @@ export default function PlatformActivityChart() {
     users,
     setUsers,
   ] = useState<DashboardUser[]>([]);
+  const [monthlyOrders, setMonthlyOrders] = useState<MonthlyOrderData[] | null>(null);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    getOrdersReport("year").then(report => { if (active) setMonthlyOrders(report.monthlyOrders); })
+      .catch(() => { if (active) setMonthlyOrders(null); })
+      .finally(() => { if (active) setOrdersLoading(false); });
+    return () => { active = false; };
+  }, []);
+
 
   const [
     products,
@@ -506,14 +517,11 @@ export default function PlatformActivityChart() {
     [tenders, monthBuckets]
   );
 
-  /*
-   * Order dashboard service is not connected yet.
-   */
-  const orderData = useMemo(
-    () =>
-      monthBuckets.map(() => 0),
-    [monthBuckets]
-  );
+  // The server report contains the current year's monthly order counts.
+  // Missing months stay null instead of being shown as fabricated zero activity.
+  const orderData = useMemo(() => monthBuckets.map(bucket =>
+    monthlyOrders?.find(row => row.key === bucket.key)?.orders ?? null
+  ), [monthlyOrders, monthBuckets]);
 
   /* =======================================================
      ACTIVE SERIES
@@ -882,13 +890,17 @@ export default function PlatformActivityChart() {
         {rangeLabel}
       </p>
 
+      {activeTab === "Orders" && <p className="mb-2 text-xs text-gray-500">Server-reported order creation counts for the current year. Months outside report coverage are unavailable.</p>}
+
       {/* CHART */}
 
       <div className="min-h-0 flex-1">
-        {loading ? (
+        {(activeTab === "Orders" ? ordersLoading : loading) ? (
           <div className="flex h-[250px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
             Loading platform activity...
           </div>
+        ) : activeTab === "Orders" && !monthlyOrders ? (
+          <div role="status" className="flex h-[250px] items-center justify-center text-sm text-gray-500">Order activity unavailable. Reports access is required.</div>
         ) : (
           <Chart
             key={`${activeTab}-${startMonth}-${endMonth}`}

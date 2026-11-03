@@ -1,3 +1,5 @@
+import { useAuth } from "../../context/AuthContext";
+import { hasUserPermission } from "../../services/auth.service";
 import {
   type ReactNode,
   useCallback,
@@ -1410,6 +1412,9 @@ function WalletModal({
   onUpdated:
     () => Promise<void>;
 }) {
+  const { user } = useAuth();
+  const canAdjust = hasUserPermission(user, "range_tokens.manage");
+
   const [
     wallet,
     setWallet,
@@ -2115,6 +2120,7 @@ function WalletModal({
             />
           </div>
 
+          {canAdjust && <>
           {/* SIGNUP */}
 
           <section className="mt-5 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
@@ -2169,6 +2175,9 @@ function WalletModal({
             </div>
           </section>
 
+          </>}
+
+          {canAdjust && <>
           {/* MANUAL ADJUSTMENT */}
 
           <section className="mt-5 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
@@ -2341,6 +2350,9 @@ function WalletModal({
             </div>
           </section>
 
+          </>}
+
+          {canAdjust && <>
           {/* REFUND */}
 
           <section className="mt-5 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
@@ -2416,6 +2428,7 @@ function WalletModal({
               </button>
             </div>
           </section>
+          </>}
 
           {/* LEDGER */}
 

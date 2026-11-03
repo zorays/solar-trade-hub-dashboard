@@ -4,6 +4,16 @@ import svgr from "vite-plugin-svgr";
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/apexcharts") || id.includes("node_modules/react-apexcharts")) return "charts";
+          if (id.includes("node_modules/@fullcalendar")) return "calendar";
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     svgr({

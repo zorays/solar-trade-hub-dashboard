@@ -268,10 +268,12 @@ const manageOnly = (
 const supplierManage: AccessRule = {
   anyOf: ["suppliers.manage"],
 };
+const rangeTokenAccess: AccessRule = {
+  anyOf: ["range_tokens.view", "range_tokens.manage", "customer_requests.manage", "suppliers.manage"],
+};
 
 const customerRequestsAccess: AccessRule = {
   anyOf: [
-    "customer_requests.view",
     "customer_requests.manage",
     "suppliers.manage",
   ],
@@ -279,23 +281,18 @@ const customerRequestsAccess: AccessRule = {
 
 const subscriptionsAccess: AccessRule = {
   anyOf: [
-    "subscriptions.view",
-    "subscriptions.manage",
     "suppliers.manage",
   ],
 };
 
 const plansAccess: AccessRule = {
   anyOf: [
-    "subscriptions.manage",
     "suppliers.manage",
   ],
 };
 
 const bidsAccess: AccessRule = {
   anyOf: [
-    "supplier_bids.view",
-    "supplier_bids.manage",
     "suppliers.manage",
   ],
 };
@@ -304,14 +301,12 @@ const paymentsAccess: AccessRule = {
   anyOf: [
     "payments.view",
     "payments.manage",
-    "orders.manage",
   ],
 };
 
 const paymentsManageAccess: AccessRule = {
   anyOf: [
     "payments.manage",
-    "orders.manage",
   ],
 };
 
@@ -360,6 +355,8 @@ const sections: MenuSection[] = [
             path: "/products/supplier-products",
             access: viewOrManage("products"),
           },
+          { name: "Local Categories", path: "/products/categories", access: manageOnly("products") },
+          { name: "Local Brands", path: "/products/brands", access: manageOnly("products") },
           {
             name: "Product Approvals",
             path: "/products/approvals",
@@ -389,7 +386,7 @@ const sections: MenuSection[] = [
           {
             name: "Range Tokens",
             path: "/marketplace/range-tokens",
-            access: supplierManage,
+            access: rangeTokenAccess,
           },
           {
             name: "Customer Requests",

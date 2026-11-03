@@ -40,6 +40,7 @@ export type ReportMetric = {
 ========================================================= */
 
 export type DashboardMetric = {
+  comparable?: boolean;
   value: number;
 
   thisMonth: number;
@@ -52,7 +53,8 @@ export type DashboardMetric = {
 
   trend:
     | "up"
-    | "down";
+    | "down"
+    | "neutral";
 };
 
 /* =========================================================

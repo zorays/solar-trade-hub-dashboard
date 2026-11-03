@@ -273,7 +273,7 @@ layer(base);
   }
 
   &::-webkit-scrollbar-thumb {
-    @apply bg-gray-200 rounded-full dark:bg-gray-700;
+    @apply bg-gray-200 rounded-full;
   }
 }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -780,7 +780,7 @@ span.flatpickr-weekday,
 }
 
 .simplebar-scrollbar::before {
-  @apply !bg-gray-200 !rounded-full dark:!bg-gray-700 !opacity-100;
+  @apply !bg-gray-200 !rounded-full !opacity-100;
 }
 
 .dark .simplebar-scrollbar::before {
@@ -789,4 +789,16 @@ span.flatpickr-weekday,
 
 .simplebar-scrollbar.simplebar-visible:before {
   @apply opacity-100;
+}
+
+/* Consistent keyboard access and reduced-motion behavior across workspaces. */
+@layer base {
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+  :where(button, a, input, select, textarea):focus-visible { outline: 2px solid #7c3aed; outline-offset: 3px; }
+  input, select, textarea { scroll-margin-top: 100px; }
+  table { font-variant-numeric: tabular-nums; }
+  html { scrollbar-gutter: stable; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

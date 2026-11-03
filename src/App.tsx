@@ -1,3 +1,6 @@
+import { lazy, Suspense } from "react";
+const Categories = lazy(() => import("./pages/Products/Categories"));
+const Brands = lazy(() => import("./pages/Products/Brands"));
 
 import {
   BrowserRouter as Router,
@@ -26,18 +29,18 @@ import {
    AUTHENTICATION
 ========================================================= */
 
-import SignIn from "./pages/AuthPages/SignIn";
-import SignUp from "./pages/AuthPages/SignUp";
-import ForgotPassword from "./pages/AuthPages/ForgotPassword";
-import ResetPassword from "./pages/AuthPages/ResetPassword";
+const SignIn = lazy(() => import("./pages/AuthPages/SignIn"));
+const SignUp = lazy(() => import("./pages/AuthPages/SignUp"));
+const ForgotPassword = lazy(() => import("./pages/AuthPages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/AuthPages/ResetPassword"));
 
 /* =========================================================
    GENERAL PAGES / LAYOUT
 ========================================================= */
 
-import NotFound from "./pages/OtherPage/NotFound";
-import UserProfiles from "./pages/UserProfiles";
-import Blank from "./pages/Blank";
+const NotFound = lazy(() => import("./pages/OtherPage/NotFound"));
+const UserProfiles = lazy(() => import("./pages/UserProfiles"));
+const Blank = lazy(() => import("./pages/Blank"));
 
 import AppLayout from "./layout/AppLayout";
 
@@ -46,89 +49,89 @@ import PermissionRoute from "./components/auth/PermissionRoute";
 
 import { ScrollToTop } from "./components/common/ScrollToTop";
 
-import Home from "./pages/Dashboard/Home";
+const Home = lazy(() => import("./pages/Dashboard/Home"));
 
 /* =========================================================
    PRODUCTS
 ========================================================= */
 
-import ProductsList from "./pages/Products/ProductsList";
-import ViewProduct from "./pages/Products/ViewProduct";
+const ProductsList = lazy(() => import("./pages/Products/ProductsList"));
+const ViewProduct = lazy(() => import("./pages/Products/ViewProduct"));
 
 /* =========================================================
    CUSTOMERS
 ========================================================= */
 
-import CustomersList from "./pages/Customers/CustomersList";
+const CustomersList = lazy(() => import("./pages/Customers/CustomersList"));
 
 /* =========================================================
    SUPPLIERS
 ========================================================= */
 
-import SuppliersList from "./pages/Suppliers/SuppliersList";
-import AddSupplier from "./pages/Suppliers/AddSupplier";
-import ViewSupplier from "./pages/Suppliers/ViewSupplier";
-import EditSupplier from "./pages/Suppliers/EditSupplier";
-import SupplierApplications from "./pages/Suppliers/SupplierApplications";
-import SupplierVerification from "./pages/Suppliers/SupplierVerification";
+const SuppliersList = lazy(() => import("./pages/Suppliers/SuppliersList"));
+const AddSupplier = lazy(() => import("./pages/Suppliers/AddSupplier"));
+const ViewSupplier = lazy(() => import("./pages/Suppliers/ViewSupplier"));
+const EditSupplier = lazy(() => import("./pages/Suppliers/EditSupplier"));
+const SupplierApplications = lazy(() => import("./pages/Suppliers/SupplierApplications"));
+const SupplierVerification = lazy(() => import("./pages/Suppliers/SupplierVerification"));
 
 /* =========================================================
    MARKETPLACE
 ========================================================= */
 
-import RangeTokens from "./pages/Marketplace/RangeTokens";
-import CustomerRequests from "./pages/Marketplace/CustomerRequests";
-import Subscriptions from "./pages/Marketplace/Subscriptions";
-import PlansFeatures from "./pages/Marketplace/PlansFeatures";
-import SupplierBids from "./pages/Marketplace/SupplierBids";
+const RangeTokens = lazy(() => import("./pages/Marketplace/RangeTokens"));
+const CustomerRequests = lazy(() => import("./pages/Marketplace/CustomerRequests"));
+const Subscriptions = lazy(() => import("./pages/Marketplace/Subscriptions"));
+const PlansFeatures = lazy(() => import("./pages/Marketplace/PlansFeatures"));
+const SupplierBids = lazy(() => import("./pages/Marketplace/SupplierBids"));
 
-import SupplierProductManagement from "./pages/Marketplace/SupplierProductManagement";
+const SupplierProductManagement = lazy(() => import("./pages/Marketplace/SupplierProductManagement"));
 
 /* =========================================================
    INSTALLERS
 ========================================================= */
 
-import InstallersList from "./pages/Installers/InstallersList";
-import AddInstaller from "./pages/Installers/AddInstaller";
-import ViewInstaller from "./pages/Installers/ViewInstaller";
-import EditInstaller from "./pages/Installers/EditInstaller";
-import InstallerApplications from "./pages/Installers/InstallerApplications";
-import InstallerVerification from "./pages/Installers/InstallerVerification";
+const InstallersList = lazy(() => import("./pages/Installers/InstallersList"));
+const AddInstaller = lazy(() => import("./pages/Installers/AddInstaller"));
+const ViewInstaller = lazy(() => import("./pages/Installers/ViewInstaller"));
+const EditInstaller = lazy(() => import("./pages/Installers/EditInstaller"));
+const InstallerApplications = lazy(() => import("./pages/Installers/InstallerApplications"));
+const InstallerVerification = lazy(() => import("./pages/Installers/InstallerVerification"));
 
 /* =========================================================
    TENDERS
 ========================================================= */
 
-import TendersList from "./pages/Tenders/TendersList";
-import AddTender from "./pages/Tenders/AddTender";
-import ViewTender from "./pages/Tenders/ViewTender";
-import EditTender from "./pages/Tenders/EditTender";
+const TendersList = lazy(() => import("./pages/Tenders/TendersList"));
+const AddTender = lazy(() => import("./pages/Tenders/AddTender"));
+const ViewTender = lazy(() => import("./pages/Tenders/ViewTender"));
+const EditTender = lazy(() => import("./pages/Tenders/EditTender"));
 
 /* =========================================================
    ORDERS
 ========================================================= */
 
-import OrdersList from "./pages/Orders/OrdersList";
-import PendingOrders from "./pages/Orders/PendingOrders";
-import CompletedOrders from "./pages/Orders/CompletedOrders";
-import ViewOrder from "./pages/Orders/ViewOrder";
+const OrdersList = lazy(() => import("./pages/Orders/OrdersList"));
+const PendingOrders = lazy(() => import("./pages/Orders/PendingOrders"));
+const CompletedOrders = lazy(() => import("./pages/Orders/CompletedOrders"));
+const ViewOrder = lazy(() => import("./pages/Orders/ViewOrder"));
 
 /* =========================================================
    PAYMENTS
 ========================================================= */
 
-import PaymentsList from "./pages/Payments/PaymentsList";
-import PendingPayments from "./pages/Payments/PendingPayments";
-import ManualVerification from "./pages/Payments/ManualVerification";
+const PaymentsList = lazy(() => import("./pages/Payments/PaymentsList"));
+const PendingPayments = lazy(() => import("./pages/Payments/PendingPayments"));
+const ManualVerification = lazy(() => import("./pages/Payments/ManualVerification"));
 
 /* =========================================================
    DEALS
 ========================================================= */
 
-import DealsList from "./pages/Deals/DealsList";
-import AddDeal from "./pages/Deals/AddDeal";
-import ViewDeal from "./pages/Deals/ViewDeal";
-import EditDeal from "./pages/Deals/EditDeal";
+const DealsList = lazy(() => import("./pages/Deals/DealsList"));
+const AddDeal = lazy(() => import("./pages/Deals/AddDeal"));
+const ViewDeal = lazy(() => import("./pages/Deals/ViewDeal"));
+const EditDeal = lazy(() => import("./pages/Deals/EditDeal"));
 
 /* =========================================================
    CAREERS MANAGEMENT
@@ -140,51 +143,51 @@ import EditDeal from "./pages/Deals/EditDeal";
    src/pages/Careers/PipelineCareers.tsx
 ========================================================= */
 
-import Careers from "./pages/Careers/Careers";
+const Careers = lazy(() => import("./pages/Careers/Careers"));
 
-import ApplicationsCareers from "./pages/Careers/ApplicationsCareers";
+const ApplicationsCareers = lazy(() => import("./pages/Careers/ApplicationsCareers"));
 
-import PipelineCareers from "./pages/Careers/PipelineCareers";
+const PipelineCareers = lazy(() => import("./pages/Careers/PipelineCareers"));
 
 /* =========================================================
    USERS / ROLES
 ========================================================= */
 
-import UsersList from "./pages/Users/UsersList";
-import ViewUser from "./pages/Users/ViewUser";
-import EditUser from "./pages/Users/EditUser";
-import RolesPermissions from "./pages/Users/RolesPermissions";
+const UsersList = lazy(() => import("./pages/Users/UsersList"));
+const ViewUser = lazy(() => import("./pages/Users/ViewUser"));
+const EditUser = lazy(() => import("./pages/Users/EditUser"));
+const RolesPermissions = lazy(() => import("./pages/Users/RolesPermissions"));
 
 /* =========================================================
    CONTENT
 ========================================================= */
 
-import Homepage from "./pages/Content/Homepage";
-import Banners from "./pages/Content/Banners";
-import Pages from "./pages/Content/Pages";
+const Homepage = lazy(() => import("./pages/Content/Homepage"));
+const Banners = lazy(() => import("./pages/Content/Banners"));
+const Pages = lazy(() => import("./pages/Content/Pages"));
 
 /* =========================================================
    REPORTS
 ========================================================= */
 
-import MarketplaceReport from "./pages/Reports/MarketplaceReport";
-import UsersReport from "./pages/Reports/UsersReport";
-import OrdersReport from "./pages/Reports/OrdersReport";
+const MarketplaceReport = lazy(() => import("./pages/Reports/MarketplaceReport"));
+const UsersReport = lazy(() => import("./pages/Reports/UsersReport"));
+const OrdersReport = lazy(() => import("./pages/Reports/OrdersReport"));
 
 /* =========================================================
    SETTINGS
 ========================================================= */
 
-import GeneralSettings from "./pages/Settings/GeneralSettings";
-import MarketplaceSettings from "./pages/Settings/MarketplaceSettings";
-import EmailSettings from "./pages/Settings/EmailSettings";
+const GeneralSettings = lazy(() => import("./pages/Settings/GeneralSettings"));
+const MarketplaceSettings = lazy(() => import("./pages/Settings/MarketplaceSettings"));
+const EmailSettings = lazy(() => import("./pages/Settings/EmailSettings"));
 
 /* =========================================================
    NOTIFICATIONS / HELP
 ========================================================= */
 
-import Notifications from "./pages/Notifications/Notifications";
-import HelpSupport from "./pages/Help/HelpSupport";
+const Notifications = lazy(() => import("./pages/Notifications/Notifications"));
+const HelpSupport = lazy(() => import("./pages/Help/HelpSupport"));
 
 /* =========================================================
    MAIN APP
@@ -195,6 +198,7 @@ export default function App() {
     <Router>
       <ScrollToTop />
 
+      <Suspense fallback={<div role="status" className="p-10 text-center text-sm text-gray-500">Loading workspace…</div>}>
       <Routes>
         {/* ================================================
             PUBLIC AUTHENTICATION
@@ -286,16 +290,12 @@ export default function App() {
 
               <Route
                 path="/products/categories"
-                element={
-                  <Navigate to="/products" replace />
-                }
+                element={<PermissionRoute permission="products.manage"><Categories /></PermissionRoute>}
               />
 
               <Route
                 path="/products/brands"
-                element={
-                  <Navigate to="/products" replace />
-                }
+                element={<PermissionRoute permission="products.manage"><Brands /></PermissionRoute>}
               />
 
               <Route
@@ -448,7 +448,7 @@ export default function App() {
             <Route
               element={
                 <PermissionRoute
-                  anyOf={["suppliers.manage"]}
+                  anyOf={["range_tokens.view", "range_tokens.manage", "customer_requests.manage", "suppliers.manage"]}
                 />
               }
             >
@@ -464,7 +464,7 @@ export default function App() {
               element={
                 <PermissionRoute
                   anyOf={[
-                    "customer_requests.view",
+                    
                     "customer_requests.manage",
                     "suppliers.manage",
                   ]}
@@ -483,8 +483,8 @@ export default function App() {
               element={
                 <PermissionRoute
                   anyOf={[
-                    "subscriptions.view",
-                    "subscriptions.manage",
+                    
+                    
                     "suppliers.manage",
                   ]}
                 />
@@ -502,7 +502,7 @@ export default function App() {
               element={
                 <PermissionRoute
                   anyOf={[
-                    "subscriptions.manage",
+                    
                     "suppliers.manage",
                   ]}
                 />
@@ -520,8 +520,8 @@ export default function App() {
               element={
                 <PermissionRoute
                   anyOf={[
-                    "supplier_bids.view",
-                    "supplier_bids.manage",
+                    
+                    
                     "suppliers.manage",
                   ]}
                 />
@@ -710,7 +710,6 @@ export default function App() {
                   anyOf={[
                     "payments.view",
                     "payments.manage",
-                    "orders.manage",
                   ]}
                 />
               }
@@ -1081,6 +1080,7 @@ export default function App() {
           element={<NotFound />}
         />
       </Routes>
+      </Suspense>
     </Router>
   );
 }

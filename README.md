@@ -1,3 +1,7 @@
+# Solar Trade Hub dashboard 2.4
+
+See [RUN_GUIDE.md](RUN_GUIDE.md) for setup and deployment, and [UPDATE_NOTES.md](UPDATE_NOTES.md) for the integration scope and validation limits.
+
 # Solar Trade Hub Dashboard
 
 The **Solar Trade Hub Dashboard** is the internal administration and marketplace operations panel for Solar Trade Hub.

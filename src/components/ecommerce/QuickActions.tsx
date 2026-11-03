@@ -1,3 +1,5 @@
+import { useAuth } from "../../context/AuthContext";
+import { hasUserPermission } from "../../services/auth.service";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -16,8 +18,8 @@ interface QuickAction {
 
 const actions: QuickAction[] = [
   {
-    title: "Add Product",
-    href: "/products/add",
+    title: "Review Products",
+    href: "/products/approvals",
     accent: "orange",
     icon: (
       <svg
@@ -156,6 +158,10 @@ function accentClasses(
 }
 
 export default function QuickActions() {
+  const { user } = useAuth();
+  const permissions: Record<string,string> = {
+    "/products/approvals": "products.manage", "/suppliers/add": "suppliers.manage", "/tenders/add": "tenders.manage", "/installers/verification": "installers.manage", "/orders": "orders.view", "/reports/marketplace": "reports.view",
+  };
   return (
     <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
       {/* HEADER */}
@@ -169,7 +175,7 @@ export default function QuickActions() {
       {/* ACTION GRID */}
 
       <div className="grid flex-1 grid-cols-3 grid-rows-2 gap-3">
-        {actions.map((action) => (
+        {actions.filter(action => hasUserPermission(user,permissions[action.href]) || hasUserPermission(user,permissions[action.href].replace(".view",".manage"))).map((action) => (
           <Link
             key={action.title}
             to={action.href}

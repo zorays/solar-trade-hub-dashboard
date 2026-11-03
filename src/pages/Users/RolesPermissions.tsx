@@ -41,8 +41,9 @@ import {
 } from "../../services/auth.service";
 
 import {
-  ALL_ROLE_PERMISSIONS,
-  ROLE_PERMISSION_GROUPS,
+  getPermissionCatalogue,
+  type PermissionCatalogueGroup,
+  ROLE_PERMISSION_GROUPS as FALLBACK_PERMISSION_GROUPS,
   buildRoleDashboardSummary,
   createRole,
   deleteRole,
@@ -64,8 +65,7 @@ import {
    TYPES
 ========================================================= */
 
-type PermissionGroup =
-  (typeof ROLE_PERMISSION_GROUPS)[number];
+type PermissionGroup = PermissionCatalogueGroup;
 
 type RoleFormState = {
   name: string;
@@ -214,6 +214,16 @@ const formatDate = (
 ========================================================= */
 
 const RolesPermissions = () => {
+  const [ROLE_PERMISSION_GROUPS, setPermissionGroups] = useState<PermissionCatalogueGroup[]>(
+    FALLBACK_PERMISSION_GROUPS.map(group => ({...group, permissions: group.permissions.map(p => ({...p}))}))
+  );
+  const ALL_ROLE_PERMISSIONS = ROLE_PERMISSION_GROUPS.flatMap(group => group.permissions.map(p => p.key));
+  useEffect(() => {
+    const controller = new AbortController();
+    getPermissionCatalogue(controller.signal).then(setPermissionGroups).catch(() => { /* Keep local compatible catalogue when unavailable. */ });
+    return () => controller.abort();
+  }, []);
+
   const {
     user,
   } =

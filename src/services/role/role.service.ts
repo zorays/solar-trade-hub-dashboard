@@ -318,6 +318,23 @@ export const ROLE_PERMISSION_GROUPS = [
       },
     ],
   },
+  { key: "product_overrides", label: "Product FREE ENABLE", permissions: [
+    { key: "products.free_enable", label: "Grant or revoke FREE ENABLE", description: "Allow individual supplier products to list without a paid plan." },
+  ] },
+  { key: "payments", label: "Payments", permissions: [
+    { key: "payments.view", label: "View payments", description: "Read payment records and reconciliation details." },
+    { key: "payments.manage", label: "Manage payments", description: "Verify receipts, mark failures and retry fulfilment." },
+  ] },
+  { key: "range_tokens", label: "Range Tokens", permissions: [
+    { key: "range_tokens.view", label: "View token wallets", description: "View customer balances and transaction history." },
+    { key: "range_tokens.manage", label: "Adjust token wallets", description: "Credit, debit, refund and grant signup tokens." },
+  ] },
+  { key: "applications", label: "Application review", permissions: [
+    { key: "supplier_applications.view", label: "View supplier applications", description: "Read supplier applications." },
+    { key: "supplier_applications.manage", label: "Review supplier applications", description: "Approve or reject supplier applications." },
+    { key: "installer_applications.view", label: "View installer applications", description: "Read installer applications." },
+    { key: "installer_applications.manage", label: "Review installer applications", description: "Manage installer applications." },
+  ] },
 ] as const;
 
 /* =========================================================
@@ -1424,3 +1441,12 @@ export const getPermissionLabel = (
 
   return permissionKey;
 };
+export type PermissionCatalogueGroup = { key: string; label: string; permissions: Array<{ key: string; label: string; description: string }> };
+export async function getPermissionCatalogue(signal?: AbortSignal): Promise<PermissionCatalogueGroup[]> {
+  const response = await api.get<{data: {groups: Array<{group: string; permissions: Array<{key: string; label: string}>}>}}>("/roles/permissions", {signal});
+  const groups = response.data.data.groups.map((group, i) => ({key: `backend_${i}`, label: group.group, permissions: group.permissions.map(p => ({...p, description: p.label}))}));
+  const seen = new Set(groups.flatMap(g => g.permissions.map(p => p.key)));
+  const compatibility = ROLE_PERMISSION_GROUPS.flatMap(g => g.permissions.map(p => ({key: String(p.key), label: String(p.label), description: String(p.description)}))).filter(p => !seen.has(p.key));
+  if (compatibility.length) groups.push({key: "dashboard_compatibility", label: "Dashboard access and existing roles", permissions: compatibility.map(p => ({...p}))});
+  return groups;
+}

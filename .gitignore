@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment credentials stay outside distributable source.
+.env
+.env.*
+!.env.example

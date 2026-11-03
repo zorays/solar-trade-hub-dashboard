@@ -1,3 +1,4 @@
+import ProductPublishingControls from "../../components/operations/ProductPublishingControls";
 
 import {
   useCallback,
@@ -1049,6 +1050,8 @@ export default function SupplierProductManagement({
                     </div>
                   )}
 
+                <ProductPublishingControls key={selected._id} product={selected} onChanged={async (updated) => { setSelected(updated); await refresh(); }} />
+
                 {/* ADMIN OPERATIONS */}
 
                 {canManage && (
@@ -1319,10 +1322,8 @@ export default function SupplierProductManagement({
                       by backend supplier
                       verification, catalogue
                       mapping, verified stock
-                      and subscription entitlement.
-                      Until integration is
-                      complete, backend correctly
-                      rejects enablement.
+                      and either paid listing entitlement
+                      or a valid product-level Admin FREE ENABLE grant.
                     </p>
                   </div>
                 )}

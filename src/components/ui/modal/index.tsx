@@ -24,6 +24,14 @@ export const Modal: React.FC<ModalProps> = ({
       if (event.key === "Escape") {
         onClose();
       }
+      if (event.key === "Tab" && modalRef.current) {
+        const elements = Array.from(modalRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')).filter(el => el.getClientRects().length > 0);
+        const first = elements[0];
+        const last = elements[elements.length - 1];
+        if (!first) { event.preventDefault(); modalRef.current.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || document.activeElement === modalRef.current)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
     };
 
     if (isOpen) {
@@ -36,14 +44,15 @@ export const Modal: React.FC<ModalProps> = ({
   }, [isOpen, onClose]);
 
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
-
+    if (!isOpen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = window.setTimeout(() => modalRef.current?.focus(), 0);
     return () => {
-      document.body.style.overflow = "unset";
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = overflow;
+      previous?.focus();
     };
   }, [isOpen]);
 
@@ -62,12 +71,18 @@ export const Modal: React.FC<ModalProps> = ({
         ></div>
       )}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dialog"
+        tabIndex={-1}
         ref={modalRef}
         className={`${contentClasses}  ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         {showCloseButton && (
           <button
+            type="button"
+            aria-label="Close dialog"
             onClick={onClose}
             className="absolute right-3 top-3 z-999 flex h-9.5 w-9.5 items-center justify-center rounded-full bg-gray-100 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white sm:right-6 sm:top-6 sm:h-11 sm:w-11"
           >

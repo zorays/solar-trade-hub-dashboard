@@ -1,3 +1,4 @@
+import OrderFulfilmentControls from "../../components/operations/OrderFulfilmentControls";
 import {
   useCallback,
   useEffect,
@@ -154,6 +155,8 @@ const ViewOrder = () => {
             {error}
           </div>
         )}
+
+        <OrderFulfilmentControls order={order} onChanged={setOrder} />
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <InfoCard title="Customer" icon={<UserRound size={18} />}>

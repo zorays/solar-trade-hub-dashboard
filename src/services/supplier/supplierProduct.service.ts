@@ -6,6 +6,7 @@ const BASE = "/supplier-products";
 export type ProductApprovalStatus = "draft" | "pending_review" | "approved" | "rejected" | "archived";
 export type StockVerificationStatus = "pending" | "evidence_required" | "verified" | "rejected";
 export type SupplierProduct = {
+  freeListing?: { active: boolean; reason?: string; startsAt?: string; endsAt?: string | null; revokedAt?: string | null };
   _id: string;
   name: string;
   sku: string;
@@ -34,7 +35,7 @@ export type ProductQuery = {
   page?: number; limit?: number; search?: string; status?: string; stockStatus?: string;
   category?: string; brand?: string; supplierId?: string; enabled?: "true" | "false";
   type?: string; source?: string; mappingStatus?: string; verificationStatus?: string;
-  publicationStatus?: string; sort?: string;
+  publicationStatus?: string; sort?: string; freeListing?: "active" | "inactive";
 };
 export type Pagination = { page: number; limit: number; total: number; totalPages: number; hasNextPage?: boolean; hasPreviousPage?: boolean };
 type ApiData<T> = { success?: boolean; message?: string; data: T; pagination?: Pagination };
@@ -69,4 +70,19 @@ export async function archiveSupplierProduct(id: string) {
 export function supplierProductErrorMessage(error: unknown): string {
   if (axios.isAxiosError<{ message?: string }>(error)) return error.response?.data?.message || error.message || "Request failed";
   return error instanceof Error ? error.message : "Unable to complete request";
+}
+
+export type ListingEntitlement = { publiclyVisible: boolean; entitlement: {allowed: boolean; source: string | null; reason: string | null}; checks: Record<string, boolean>; subscriptionBlockingReasons: string[] };
+export async function getListingEntitlement(id: string, signal?: AbortSignal) {
+  return (await api.get<ApiData<ListingEntitlement>>(`${BASE}/admin/${encodeURIComponent(id)}/entitlement`, {signal})).data.data;
+}
+export type MappingPayload = { decision: "map" | "requires_review" | "reject"; externalProductId?: string; type?: "material" | "service"; categoryId?: string; brandId?: string; productClassification?: string; notes?: string };
+export async function mapSupplierProduct(id: string, payload: MappingPayload) {
+  return (await api.patch<ApiData<SupplierProduct>>(`${BASE}/admin/${encodeURIComponent(id)}/catalogue-mapping`, payload)).data.data;
+}
+export async function grantProductFreeListing(id: string, payload: {reason: string; durationDays?: number; publish: boolean}) {
+  return (await api.post<ApiData<{product: SupplierProduct; published: boolean; publicationError?: {message?: string}}>>(`${BASE}/admin/${encodeURIComponent(id)}/free-enable`, payload)).data.data;
+}
+export async function revokeProductFreeListing(id: string, reason: string) {
+  return (await api.post<ApiData<{product: SupplierProduct; unpublished: boolean}>>(`${BASE}/admin/${encodeURIComponent(id)}/free-enable/revoke`, {reason})).data.data;
 }

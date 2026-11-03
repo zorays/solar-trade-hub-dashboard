@@ -727,6 +727,8 @@ export default function Categories() {
       <PageBreadcrumb
         pageTitle="Categories"
       />
+      <p className="mb-5 text-sm text-gray-500">Manage local Solar Trade Hub reference data. These changes do not modify the external Biz Daily master catalogue.</p>
+
 
       <Toaster
         position="top-right"

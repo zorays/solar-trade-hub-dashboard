@@ -1,17 +1,5 @@
-/* =========================================================
-   SOLAR TRADE HUB
-   PAYMENT FRONTEND SERVICE CONTRACT
-
-   Backend routes will be connected only after the actual
-   payment routes/controller are confirmed.
-
-   This file provides the shared Payment contracts/helpers
-   required by:
-
-   - PaymentsList.tsx
-   - PendingPayments.tsx
-   - ManualVerification.tsx
-========================================================= */
+import api from "../api";
+/* Payment contracts and authenticated dashboard API operations. */
 
 /* =========================================================
    PAYMENT PURPOSE
@@ -1138,3 +1126,17 @@ export const getPaymentOutstandingAmount = (
     0
   );
 };
+export async function getPayments(filters: PaymentListFilters = {}): Promise<PaymentListResult> {
+  const {page, limit, search, purpose, provider, status, verificationStatus, fulfillmentStatus} = filters;
+  const response = await api.get<{data: Payment[]; pagination: PaymentPagination}>("/payments/manage", {params: {page, limit, search, purpose, provider, status, verificationStatus, fulfillmentStatus}});
+  return {payments: response.data.data, pagination: response.data.pagination};
+}
+export async function getPayment(id: string): Promise<Payment> {
+  const response = await api.get<{data: {payment: Payment}}>(`/payments/manage/${encodeURIComponent(id)}`);
+  return response.data.data.payment;
+}
+export type PaymentAction = "processing" | "verify-paid" | "failed" | "retry-fulfillment";
+export async function managePayment(id: string, action: PaymentAction, payload: {failureMessage?: string; providerSnapshot?: PaymentProviderSnapshot} = {}) {
+  const url = `/payments/manage/${encodeURIComponent(id)}/${action}`;
+  return action === "retry-fulfillment" ? api.post(url, {}) : api.patch(url, payload);
+}

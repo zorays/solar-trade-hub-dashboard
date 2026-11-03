@@ -39,7 +39,6 @@ interface MetricCardProps {
     | "blue"
     | "green";
   icon: ReactNode;
-  bars: number[];
   loading?: boolean;
 }
 
@@ -90,39 +89,6 @@ function TenderIcon() {
    MINI BARS
 ========================================================= */
 
-function MiniBars({
-  bars,
-  accent,
-}: {
-  bars: number[];
-  accent: MetricCardProps["accent"];
-}) {
-  const color = {
-    orange: "bg-[#ff4b1f]",
-    purple: "bg-[#7c4dff]",
-    blue: "bg-[#3b82f6]",
-    green: "bg-[#22c55e]",
-  }[accent];
-
-  return (
-    <div className="flex h-9 items-end gap-[3px]">
-      {bars.map((height, index) => (
-        <span
-          key={index}
-          className={`w-1 rounded-[2px] ${color}`}
-          style={{
-            height: `${height}%`,
-            opacity: Math.min(
-              0.35 + index * 0.1,
-              1
-            ),
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 /* =========================================================
    METRIC CARD
 ========================================================= */
@@ -135,7 +101,6 @@ function MetricCard({
   trend,
   accent,
   icon,
-  bars,
   loading = false,
 }: MetricCardProps) {
   const iconStyle = {
@@ -199,12 +164,7 @@ function MetricCard({
           </div>
         </div>
 
-        <div className="absolute bottom-4 right-4">
-          <MiniBars
-            bars={bars}
-            accent={accent}
-          />
-        </div>
+
       </div>
     </div>
   );
@@ -218,8 +178,9 @@ const EMPTY_METRIC: DashboardMetric = {
   value: 0,
   thisMonth: 0,
   lastMonth: 0,
-  changePct: 0,
-  trend: "up",
+  changePct: null,
+  comparable: false,
+  trend: "neutral",
 };
 
 /* =========================================================
@@ -452,14 +413,6 @@ export default function MarketplaceMetrics() {
         note={productNote}
         trend="neutral"
         accent="orange"
-        bars={[
-          28,
-          40,
-          55,
-          49,
-          72,
-          94,
-        ]}
         icon={
           <BoxIconLine className="size-[18px]" />
         }
@@ -478,17 +431,9 @@ export default function MarketplaceMetrics() {
           supplierMetric
         )}
         trend={
-          supplierMetric.trend
+          supplierMetric.comparable === false ? "neutral" : supplierMetric.trend
         }
         accent="purple"
-        bars={[
-          22,
-          32,
-          43,
-          57,
-          73,
-          91,
-        ]}
         icon={
           <GroupIcon className="size-[18px]" />
         }
@@ -507,17 +452,9 @@ export default function MarketplaceMetrics() {
           installerMetric
         )}
         trend={
-          installerMetric.trend
+          installerMetric.comparable === false ? "neutral" : installerMetric.trend
         }
         accent="blue"
-        bars={[
-          20,
-          29,
-          44,
-          60,
-          76,
-          95,
-        ]}
         icon={
           <InstallerIcon />
         }
@@ -536,17 +473,9 @@ export default function MarketplaceMetrics() {
           tenderMetric
         )}
         trend={
-          tenderMetric.trend
+          tenderMetric.comparable === false ? "neutral" : tenderMetric.trend
         }
         accent="green"
-        bars={[
-          30,
-          38,
-          50,
-          63,
-          77,
-          94,
-        ]}
         icon={
           <TenderIcon />
         }
