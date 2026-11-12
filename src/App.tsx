@@ -163,6 +163,7 @@ const RolesPermissions = lazy(() => import("./pages/Users/RolesPermissions"));
 ========================================================= */
 
 const Homepage = lazy(() => import("./pages/Content/Homepage"));
+const MarketplaceSales = lazy(() => import("./pages/Content/MarketplaceSales"));
 const Banners = lazy(() => import("./pages/Content/Banners"));
 const Pages = lazy(() => import("./pages/Content/Pages"));
 
@@ -902,6 +903,11 @@ export default function App() {
               <Route
                 path="/content/homepage"
                 element={<Homepage />}
+              />
+
+              <Route
+                path="/content/sales"
+                element={<PermissionRoute permission="content.manage"><MarketplaceSales /></PermissionRoute>}
               />
 
               <Route
