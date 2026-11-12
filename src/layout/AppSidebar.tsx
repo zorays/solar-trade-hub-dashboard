@@ -622,6 +622,11 @@ const sections: MenuSection[] = [
             access: viewOrManage("content"),
           },
           {
+            name: "Recent Sales",
+            path: "/content/sales",
+            access: manageOnly("content"),
+          },
+          {
             name: "Banners",
             path: "/content/banners",
             access: manageOnly("content"),
