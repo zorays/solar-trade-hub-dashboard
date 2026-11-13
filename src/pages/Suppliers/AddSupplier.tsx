@@ -179,7 +179,7 @@ const BUSINESS_TYPE_OPTIONS: Array<{
     value:
       "installer",
     label:
-      "Installer",
+      "EPC",
   },
   {
     value:
