@@ -74,6 +74,7 @@ const ViewSupplier = lazy(() => import("./pages/Suppliers/ViewSupplier"));
 const EditSupplier = lazy(() => import("./pages/Suppliers/EditSupplier"));
 const SupplierApplications = lazy(() => import("./pages/Suppliers/SupplierApplications"));
 const SupplierVerification = lazy(() => import("./pages/Suppliers/SupplierVerification"));
+const SupplierInvitations = lazy(() => import("./pages/Suppliers/SupplierInvitations"));
 
 /* =========================================================
    MARKETPLACE
@@ -428,6 +429,7 @@ export default function App() {
                 path="/suppliers/verification"
                 element={<SupplierVerification />}
               />
+              <Route path="/suppliers/invitations" element={<SupplierInvitations />} />
 
               <Route
                 path="/suppliers/:id/edit"
