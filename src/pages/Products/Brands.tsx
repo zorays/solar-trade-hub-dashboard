@@ -841,7 +841,7 @@ export default function Brands() {
       <PageBreadcrumb
         pageTitle="Brands"
       />
-      <p className="mb-5 text-sm text-gray-500">Manage local Solar Trade Hub reference data. These changes do not modify the external Biz Daily master catalogue.</p>
+      <p className="mb-5 text-sm text-gray-500">Manage local Solar Trade Hub reference data. Featured, active brands are displayed first in size-matched product comparisons. For a checkbox list of all catalogue brands, open Product Management → Comparison Preferences. These changes do not modify the external Biz Daily master catalogue.</p>
 
 
       <Toaster

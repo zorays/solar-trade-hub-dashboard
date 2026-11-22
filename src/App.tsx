@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 const Categories = lazy(() => import("./pages/Products/Categories"));
 const Brands = lazy(() => import("./pages/Products/Brands"));
+const ComparisonPreferences = lazy(() => import("./pages/Products/ComparisonPreferences"));
 
 import {
   BrowserRouter as Router,
@@ -298,6 +299,10 @@ export default function App() {
               <Route
                 path="/products/brands"
                 element={<PermissionRoute permission="products.manage"><Brands /></PermissionRoute>}
+              />
+              <Route
+                path="/products/comparison-preferences"
+                element={<PermissionRoute permission="products.manage"><ComparisonPreferences /></PermissionRoute>}
               />
 
               <Route

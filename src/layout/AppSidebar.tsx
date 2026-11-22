@@ -357,6 +357,7 @@ const sections: MenuSection[] = [
           },
           { name: "Local Categories", path: "/products/categories", access: manageOnly("products") },
           { name: "Local Brands", path: "/products/brands", access: manageOnly("products") },
+          { name: "Comparison Preferences", path: "/products/comparison-preferences", access: manageOnly("products") },
           {
             name: "Product Approvals",
             path: "/products/approvals",
