@@ -903,6 +903,11 @@ export default function SuppliersList() {
                                   supplier.supplierId
                                 }
                               </p>
+                              {supplier.legacyInstaller?.installer && (
+                                <p className="mt-1 text-[11px] font-semibold text-violet-700">
+                                  EPC profile linked from legacy Installer
+                                </p>
+                              )}
 
                               {supplier.ntn && (
                                 <p className="mt-0.5 max-w-[220px] truncate text-[11px] text-gray-500">
