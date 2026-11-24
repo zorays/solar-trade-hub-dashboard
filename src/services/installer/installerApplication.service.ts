@@ -76,6 +76,7 @@ export interface InstallerApplication {
   applicationId: string;
 
   companyName: string;
+  providerType?: "unspecified" | "epc_company" | "sole_proprietor" | "freelancer" | "technician";
 
   displayName: string;
 

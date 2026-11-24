@@ -22,6 +22,23 @@ export type InstallerVerificationStatus =
   | "verified"
   | "rejected";
 
+export type InstallerProviderType =
+  | "unspecified"
+  | "epc_company"
+  | "sole_proprietor"
+  | "freelancer"
+  | "technician";
+
+export const formatInstallerProviderType = (type?: InstallerProviderType | null): string => {
+  switch (type) {
+    case "epc_company": return "EPC / Installation Company";
+    case "sole_proprietor": return "Sole Proprietor";
+    case "freelancer": return "Freelance Installer";
+    case "technician": return "Technician / Electrician";
+    default: return "Unclassified";
+  }
+};
+
 /* =========================================================
    INTERNAL CONTACT
 ========================================================= */
@@ -72,6 +89,7 @@ export type Installer = {
   installerId: string;
 
   companyName: string;
+  providerType?: InstallerProviderType;
 
   displayName: string;
 

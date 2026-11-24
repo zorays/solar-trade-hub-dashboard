@@ -26,6 +26,7 @@ import {
   type Installer,
   type InstallerStatus,
   type InstallerVerificationStatus,
+  formatInstallerProviderType,
 } from "../../services/installer/installer.service";
 
 /* =========================================================
@@ -1128,6 +1129,12 @@ export default function InstallersList() {
                                     installer.installerId
                                   }
                                 </p>
+
+                                {installer.providerType && installer.providerType !== "unspecified" && (
+                                  <p className="mt-0.5 text-[11px] font-semibold text-violet-700">
+                                    {formatInstallerProviderType(installer.providerType)}
+                                  </p>
+                                )}
 
                                 {installer.companyName !==
                                   displayName && (
