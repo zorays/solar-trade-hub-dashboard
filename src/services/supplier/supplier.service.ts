@@ -95,6 +95,14 @@ export type Supplier = {
 
   description?: string;
 
+  legacyInstaller?: {
+    installer?: string | null;
+    installerId?: string;
+    services?: string[];
+    serviceArea?: string[];
+    migratedAt?: string | null;
+  } | null;
+
   verificationStatus:
     SupplierVerificationStatus;
 
