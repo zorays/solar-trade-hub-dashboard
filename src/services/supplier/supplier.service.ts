@@ -777,6 +777,10 @@ export const formatSupplierBusinessType = (
     return "";
   }
 
+  // Legacy Supplier.businessType=installer means an EPC/company,
+  // not an individual technician in the separate Installer directory.
+  if (value === "installer") return "EPC / Installation Company";
+
   return value
     .split("_")
     .filter(
