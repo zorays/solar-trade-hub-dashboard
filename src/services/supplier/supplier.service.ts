@@ -95,6 +95,14 @@ export type Supplier = {
 
   description?: string;
 
+  legacyInstaller?: {
+    installer?: string | null;
+    installerId?: string;
+    services?: string[];
+    serviceArea?: string[];
+    migratedAt?: string | null;
+  } | null;
+
   verificationStatus:
     SupplierVerificationStatus;
 
@@ -776,6 +784,10 @@ export const formatSupplierBusinessType = (
   ) {
     return "";
   }
+
+  // Legacy Supplier.businessType=installer means an EPC/company,
+  // not an individual technician in the separate Installer directory.
+  if (value === "installer") return "EPC / Installation Company";
 
   return value
     .split("_")
