@@ -638,10 +638,9 @@ const CustomersList =
             UserListParams = {
             search,
 
+            // Include all storefront customer accounts, including
+            // people who started with supplier onboarding.
             accountType:
-              "customer",
-
-            marketplaceIntent:
               "customer",
 
             status:
@@ -685,9 +684,7 @@ const CustomersList =
                   user
                 ) =>
                   user.accountType ===
-                    "customer" &&
-                  user.marketplaceIntent !==
-                    "supplier"
+                    "customer"
               );
 
             setCustomers(
@@ -1097,8 +1094,8 @@ const CustomersList =
                     </h1>
 
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-400">
-                      Manage registered marketplace customers,
-                      verification and account access.
+                      All storefront signups, including customers who also applied
+                      as suppliers. Manage verification and account access.
                     </p>
                   </div>
                 </div>
@@ -1670,6 +1667,11 @@ const CustomerRow = ({
               {customer.email ||
                 "No email"}
             </p>
+            {customer.marketplaceIntent === "supplier" && (
+              <p className="mt-1 text-[11px] font-medium text-violet-700 dark:text-violet-300">
+                Supplier-onboarding signup · Customer account
+              </p>
+            )}
           </div>
         </div>
       </td>
