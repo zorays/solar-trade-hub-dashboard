@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 
 import {
   Link,
+  useNavigate,
   useParams,
 } from "react-router";
 
@@ -576,6 +577,7 @@ function getDescription(
 
 export default function ViewProduct() {
   const params = useParams();
+  const navigate = useNavigate();
 
   const productReference =
     params.productId ||
@@ -631,6 +633,13 @@ export default function ViewProduct() {
 
         setProduct(result);
 
+        // Client-side replacement for legacy dashboard UUID bookmarks.
+        // The public Next.js website performs actual 308 redirects.
+        const canonical = result.permalinkSku || result.sku;
+        if (canonical && canonical !== productReference) {
+          void navigate(`/products/${encodeURIComponent(canonical)}`, { replace: true });
+        }
+
         setSelectedImageIndex(0);
       } catch (error) {
         setProduct(null);
@@ -644,7 +653,7 @@ export default function ViewProduct() {
       } finally {
         setLoading(false);
       }
-    }, [productReference]);
+    }, [productReference, navigate]);
 
   useEffect(() => {
     void loadProduct();
@@ -833,7 +842,7 @@ export default function ViewProduct() {
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-lg bg-[#5b2eff]/10 px-3 py-1.5 font-mono text-xs font-semibold text-[#7c5cff]">
-                  {productId}
+                  SKU: {product.permalinkSku || product.sku || "Awaiting SKU"}
                 </span>
 
                 <TypeBadge
@@ -1434,9 +1443,9 @@ function MarketplaceBadge({
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-      <PowerOff className="size-3.5" />
-      Not Enabled
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
+      <Store className="size-3.5" />
+      Catalogue Only
     </span>
   );
 }
