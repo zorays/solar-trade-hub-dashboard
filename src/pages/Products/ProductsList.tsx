@@ -1536,9 +1536,14 @@ export default function ProductsList() {
                           </td>
 
                           <td className="max-w-[220px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                            {product.sku ||
-                              product.permalinkSku ||
-                              "Awaiting SKU"}
+                            <span className="font-mono break-all">
+                              {product.sku || product.permalinkSku || "Awaiting SKU"}
+                            </span>
+                            {product.skuOrigin === "platform" && (
+                              <span className="mt-1 block text-[10px] text-violet-600 dark:text-violet-300">
+                                Platform-assigned SKU
+                              </span>
+                            )}
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3">
