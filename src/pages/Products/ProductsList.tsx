@@ -158,7 +158,7 @@ const MARKETPLACE_OPTIONS: FilterOption[] = [
   },
   {
     value: "disabled",
-    label: "Disabled",
+    label: "Catalogue Only",
   },
 ];
 
@@ -1496,6 +1496,10 @@ export default function ProductsList() {
                       const externalId =
                         product.externalProductId ||
                         product.id;
+                      const permalink =
+                        product.permalinkSku ||
+                        product.sku ||
+                        externalId;
 
                       const accesses =
                         getMarketplaceAccesses(
@@ -1516,7 +1520,7 @@ export default function ProductsList() {
                               <div className="min-w-0">
                                 <Link
                                   to={`/products/${encodeURIComponent(
-                                    externalId
+                                    permalink
                                   )}`}
                                   className="line-clamp-2 text-sm font-semibold text-gray-900 hover:text-[#ff4b1f] dark:text-white"
                                 >
@@ -1525,7 +1529,7 @@ export default function ProductsList() {
                                 </Link>
 
                                 <p className="mt-1 max-w-[250px] truncate font-mono text-[10px] text-gray-400">
-                                  {externalId}
+                                  SKU: {permalink}
                                 </p>
                               </div>
                             </div>
@@ -1533,7 +1537,8 @@ export default function ProductsList() {
 
                           <td className="max-w-[220px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                             {product.sku ||
-                              "—"}
+                              product.permalinkSku ||
+                              "Awaiting SKU"}
                           </td>
 
                           <td className="whitespace-nowrap px-4 py-3">
@@ -1609,7 +1614,7 @@ export default function ProductsList() {
                             <div className="flex items-center justify-center gap-1">
                               <ActionLink
                                 to={`/products/${encodeURIComponent(
-                                  externalId
+                                  permalink
                                 )}`}
                                 title="View Product"
                               >
@@ -2574,8 +2579,8 @@ function AccessStatus({
   }
 
   return (
-    <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-      Disabled
+    <span className="inline-flex rounded-full bg-violet-500/10 px-2 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
+      Catalogue Only
     </span>
   );
 }
