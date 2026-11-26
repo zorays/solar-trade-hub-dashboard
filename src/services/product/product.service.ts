@@ -61,6 +61,9 @@ export type Product = {
   provider: string;
   source: ProductSource;
   sku: string;
+  permalinkSku: string;
+  skuOrigin?: "external" | "platform";
+  canonicalPath?: string | null;
   name: string;
   type: string;
   productType?: string | null;
@@ -295,6 +298,9 @@ export const normalizeProduct = (
     provider: String(raw.provider || "biz_daily"),
     source: "external_api",
     sku: raw.sku ? String(raw.sku) : "",
+    permalinkSku: String(raw.permalinkSku || raw.sku || "").trim(),
+    skuOrigin: raw.skuOrigin === "platform" ? "platform" : "external",
+    canonicalPath: typeof raw.canonicalPath === "string" ? raw.canonicalPath : null,
     name: raw.name ? String(raw.name) : "",
     type: raw.type ? String(raw.type) : "",
     productType: raw.productType ?? null,
