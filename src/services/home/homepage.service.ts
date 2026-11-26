@@ -15,7 +15,10 @@ export type HomepageSectionKey =
   | "featuredSuppliers"
   | "solarPrices"
   | "quoteCTA"
-  | "whatsappCTA";
+  | "whatsappCTA"
+  | "instagramGallery"
+  | "blog"
+  | "marketplaceActivity";
 
 export type HomepageHero = {
   eyebrow: string;
@@ -401,6 +404,27 @@ export const DEFAULT_HOMEPAGE_SECTIONS: HomepageSection[] =
 
       order:
         11,
+    },
+    {
+      id: "instagramGallery",
+      title: "Instagram Gallery",
+      description: "Latest promotional images and social updates.",
+      enabled: true,
+      order: 12,
+    },
+    {
+      id: "blog",
+      title: "Solar Energy Articles",
+      description: "Editorial reading and energy industry articles.",
+      enabled: true,
+      order: 13,
+    },
+    {
+      id: "marketplaceActivity",
+      title: "Client Requests & Recent Sales",
+      description: "Verified marketplace enquiries and completed transactions.",
+      enabled: true,
+      order: 14,
     },
   ];
 

@@ -7,6 +7,8 @@ import {
 
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   BatteryCharging,
   Building2,
@@ -114,6 +116,11 @@ const getSectionIcon = (
     case "whatsappCTA":
       return <Store size={18} />;
 
+    case "instagramGallery":
+    case "blog":
+    case "marketplaceActivity":
+      return <Layers3 size={18} />;
+
     default:
       return <Layers3 size={18} />;
   }
@@ -206,6 +213,8 @@ const Homepage = () => {
     useState<HomepageContent | null>(
       null
     );
+
+  const [draggedSection, setDraggedSection] = useState<HomepageSectionKey | null>(null);
 
   const [
     loading,
@@ -467,6 +476,37 @@ const Homepage = () => {
   };
 
   /* =======================================================
+     REORDER SECTIONS — KEYBOARD BUTTONS AND DRAG / DROP
+     Assign consecutive, unique order values for validation.
+  ======================================================= */
+
+  const reorderSections = (sourceId: HomepageSectionKey, targetIndex: number) => {
+    setSections((current) => {
+      const ordered = [...current].sort((a, b) => a.order - b.order);
+      const from = ordered.findIndex((section) => section.id === sourceId);
+      if (from < 0 || targetIndex < 0 || targetIndex >= ordered.length || from === targetIndex) return current;
+      const [moved] = ordered.splice(from, 1);
+      ordered.splice(targetIndex, 0, moved);
+      return ordered.map((section, index) => ({ ...section, order: index + 1 }));
+    });
+    setSaved(false);
+    setError("");
+  };
+
+  const moveSection = (id: HomepageSectionKey, direction: -1 | 1) => {
+    const index = sortedSections.findIndex((section) => section.id === id);
+    if (index >= 0) reorderSections(id, index + direction);
+  };
+
+  const dropSection = (targetId: HomepageSectionKey) => {
+    if (draggedSection) {
+      const target = sortedSections.findIndex((section) => section.id === targetId);
+      if (target >= 0) reorderSections(draggedSection, target);
+    }
+    setDraggedSection(null);
+  };
+
+  /* =======================================================
      SAVE
   ======================================================= */
 
@@ -688,6 +728,14 @@ const Homepage = () => {
                     ? "Saving..."
                     : "Save Changes"}
                 </button>
+                <a
+                  href="https://solartradehub.co/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-11 items-center justify-center rounded-lg border border-purple-200 px-4 text-sm font-semibold text-purple-700 hover:bg-purple-50 dark:border-purple-500/30 dark:text-purple-300"
+                >
+                  View Live Homepage
+                </a>
               </div>
             </div>
           </div>
@@ -1097,7 +1145,7 @@ const Homepage = () => {
 
             <ContentCard
               title="Homepage Sections"
-              description="Control which storefront sections are visible on the homepage."
+              description="Drag a section handle or use Up / Down to reorder. Toggle visibility, then Save Changes. The public website refreshes the layout periodically."
             >
               <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
                 <div className="divide-y divide-gray-200 dark:divide-gray-800">
@@ -1109,14 +1157,22 @@ const Homepage = () => {
                         key={
                           section.id
                         }
-                        className="flex flex-col gap-4 p-4 transition hover:bg-gray-50/70 dark:hover:bg-white/[0.02] sm:flex-row sm:items-center"
+                        onDragOver={(event) => { if (draggedSection) event.preventDefault(); }}
+                        onDrop={(event) => { event.preventDefault(); dropSection(section.id); }}
+                        className={`flex flex-col gap-4 p-4 transition hover:bg-gray-50/70 dark:hover:bg-white/[0.02] sm:flex-row sm:items-center ${draggedSection === section.id ? "opacity-60 ring-1 ring-purple-400" : ""}`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center text-gray-400">
-                            <GripVertical
-                              size={18}
-                            />
-                          </div>
+                          <button
+                            type="button"
+                            draggable={!saving}
+                            onDragStart={() => setDraggedSection(section.id)}
+                            onDragEnd={() => setDraggedSection(null)}
+                            title={`Drag to reorder ${section.title}`}
+                            aria-label={`Drag ${section.title} to another position`}
+                            className="flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-lg text-gray-500 hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-500 active:cursor-grabbing dark:hover:bg-white/5"
+                          >
+                            <GripVertical size={18} />
+                          </button>
 
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-purple-50 text-purple-600 dark:from-orange-500/10 dark:to-purple-500/10 dark:text-purple-400">
                             {getSectionIcon(
@@ -1149,6 +1205,18 @@ const Homepage = () => {
                         </div>
 
                         <div className="flex items-center justify-between gap-4 sm:justify-end">
+                          <div className="flex items-center gap-1" aria-label={`Reorder ${section.title}`}>
+                            <button type="button" onClick={() => moveSection(section.id, -1)} disabled={saving || sortedSections[0]?.id === section.id}
+                              aria-label={`Move ${section.title} up`} title="Move up"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30 dark:border-gray-700 dark:text-gray-300">
+                              <ArrowUp size={15} />
+                            </button>
+                            <button type="button" onClick={() => moveSection(section.id, 1)} disabled={saving || sortedSections[sortedSections.length - 1]?.id === section.id}
+                              aria-label={`Move ${section.title} down`} title="Move down"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30 dark:border-gray-700 dark:text-gray-300">
+                              <ArrowDown size={15} />
+                            </button>
+                          </div>
                           <span
                             className={`
                               inline-flex
