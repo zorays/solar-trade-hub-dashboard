@@ -728,6 +728,14 @@ const Homepage = () => {
                     ? "Saving..."
                     : "Save Changes"}
                 </button>
+                <a
+                  href="https://solartradehub.co/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-11 items-center justify-center rounded-lg border border-purple-200 px-4 text-sm font-semibold text-purple-700 hover:bg-purple-50 dark:border-purple-500/30 dark:text-purple-300"
+                >
+                  View Live Homepage
+                </a>
               </div>
             </div>
           </div>
@@ -1137,7 +1145,7 @@ const Homepage = () => {
 
             <ContentCard
               title="Homepage Sections"
-              description="Drag a section handle or use Up / Down to reorder. Toggle visibility and press Save Changes to publish the selected layout."
+              description="Drag a section handle or use Up / Down to reorder. Toggle visibility, then Save Changes. The public website refreshes the layout periodically."
             >
               <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
                 <div className="divide-y divide-gray-200 dark:divide-gray-800">
